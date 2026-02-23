@@ -36,8 +36,8 @@ DOWNLOAD_DIR.mkdir(exist_ok=True)
 
 DATA_FILE = Path("data.json")
 
-BOT_USERNAME = @balerndownloadsbot  # ← укажи username бота без @
-BOT_VERSION  = 1.1        # ← меняй при каждом обновлении
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
+BOT_VERSION  = os.environ.get("BOT_VERSION", "1.1")        # ← меняй при каждом обновлении
 
 # Патч-ноты для каждой версии
 PATCH_NOTES = {
