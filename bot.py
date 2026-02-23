@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = "8322503182:AAF8C0Ojhu6OPCMLakURfWdm7TeycsCK9vQ"
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
 BOT_VERSION  = os.environ.get("BOT_VERSION", "1.1")
-ADMIN_ID     = 649566280
+ADMIN_ID     = int(os.environ.get("ADMIN_ID", "649566280"))
 DAILY_LIMIT  = 20
 HISTORY_SIZE = 10
 MAX_FILE_MB  = 50
@@ -905,6 +905,19 @@ async def unblock_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # ─── Callback-обработчики ─────────────────────────────────────────────────────
 
+async def safe_edit(query, text, reply_markup=None):
+    """Редактирует сообщение — текст или caption (для фото)."""
+    try:
+        await query.edit_message_text(text, reply_markup=reply_markup)
+    except Exception:
+        try:
+            await query.edit_message_caption(caption=text, reply_markup=reply_markup)
+        except Exception:
+            try:
+                await query.message.reply_text(text, reply_markup=reply_markup)
+            except Exception:
+                pass
+
 async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
@@ -914,12 +927,12 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if action == "back":
         try:
-            await query.edit_message_text(t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
+            await safe_edit(query, t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
         except Exception:
             await query.edit_message_caption(caption=t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
 
     elif action == "download":
-        await query.edit_message_text("🔗 Отправь мне ссылку на видео из TikTok, YouTube, Twitter, VK и других платформ.")
+        await safe_edit(query, "🔗 Отправь мне ссылку на видео из TikTok, YouTube, Twitter, VK и других платформ.")
 
     elif action == "history":
         if "history_loaded" not in context.user_data:
@@ -927,13 +940,13 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             context.user_data["history_loaded"] = True
         history = context.user_data.get("history", [])
         if not history:
-            await query.edit_message_text(t(context, "history_empty"), reply_markup=back_keyboard())
+            await safe_edit(query, t(context, "history_empty"), reply_markup=back_keyboard())
         else:
             kb = InlineKeyboardMarkup(
                 history_keyboard(history).inline_keyboard +
                 [[InlineKeyboardButton("◀️ Назад", callback_data="menu_back")]]
             )
-            await query.edit_message_text(t(context, "history_title"), reply_markup=kb)
+            await safe_edit(query, t(context, "history_title"), reply_markup=kb)
 
     elif action == "me":
         data = get_data()
@@ -947,19 +960,19 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             fav = max(user_platforms.items(), key=lambda x: x[1])[0] if user_platforms else "—"
             today_count = data.get("downloads_today", {}).get(uid, 0)
             text = t(context, "me", total=user_total, fav=fav, today=today_count, limit=DAILY_LIMIT)
-        await query.edit_message_text(text, reply_markup=back_keyboard())
+        await safe_edit(query, text, reply_markup=back_keyboard())
 
     elif action == "patchnote":
         notes = PATCH_NOTES.get(BOT_VERSION)
         lang = get_lang(context)
         text = notes.get(lang, notes.get("ru", "")) if notes else f"Версия {BOT_VERSION} — нет патч-нотов."
-        await query.edit_message_text(text, reply_markup=back_keyboard())
+        await safe_edit(query, text, reply_markup=back_keyboard())
 
     elif action == "help":
-        await query.edit_message_text(t(context, "help"), reply_markup=back_keyboard())
+        await safe_edit(query, t(context, "help"), reply_markup=back_keyboard())
 
     elif action == "lang":
-        await query.edit_message_text("🌍 Выбери язык / Choose language:", reply_markup=lang_menu_keyboard())
+        await safe_edit(query, "🌍 Выбери язык / Choose language:", reply_markup=lang_menu_keyboard())
 
     elif action == "stats" and is_admin:
         data = get_data()
@@ -968,7 +981,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         platforms = stats.get("platforms", {})
         top = sorted(platforms.items(), key=lambda x: x[1], reverse=True)
         top_str = "\n".join(f"  {p}: {c}" for p, c in top[:5]) or "  —"
-        await query.edit_message_text(
+        await safe_edit(query, 
             f"📊 Статистика бота:\n\n"
             f"Всего скачиваний: {total}\n"
             f"Уникальных пользователей: {len(stats.get('users', {}))}\n"
@@ -982,9 +995,9 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         data = get_data()
         blocked = data.get("blocked", [])
         if not blocked:
-            await query.edit_message_text("✅ Заблокированных нет.", reply_markup=back_keyboard())
+            await safe_edit(query, "✅ Заблокированных нет.", reply_markup=back_keyboard())
         else:
-            await query.edit_message_text(
+            await safe_edit(query, 
                 f"🚫 Заблокировано: {len(blocked)}\nНажми чтобы разблокировать:",
                 reply_markup=admin_blocks_keyboard(blocked)
             )
@@ -992,12 +1005,12 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     elif action == "sendpatch" and is_admin:
         notes = PATCH_NOTES.get(BOT_VERSION)
         if not notes:
-            await query.edit_message_text(f"❌ Нет патч-нота для v{BOT_VERSION}.", reply_markup=back_keyboard())
+            await safe_edit(query, f"❌ Нет патч-нота для v{BOT_VERSION}.", reply_markup=back_keyboard())
             return
         if not ACTIVE_USERS:
-            await query.edit_message_text("📭 Нет активных пользователей.", reply_markup=back_keyboard())
+            await safe_edit(query, "📭 Нет активных пользователей.", reply_markup=back_keyboard())
             return
-        await query.edit_message_text(f"📤 Рассылаю v{BOT_VERSION}...")
+        await safe_edit(query, f"📤 Рассылаю v{BOT_VERSION}...")
         sent = 0
         failed = 0
         for uid, lang in ACTIVE_USERS.items():
@@ -1011,7 +1024,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception as e:
                 logger.warning(f"Не удалось отправить {uid}: {e}")
                 failed += 1
-        await query.edit_message_text(
+        await safe_edit(query, 
             f"✅ Разослано!\n📨 Доставлено: {sent}\n❌ Не доставлено: {failed}",
             reply_markup=back_keyboard()
         )
@@ -1028,9 +1041,9 @@ async def handle_adm_unblock_callback(update: Update, context: ContextTypes.DEFA
         blocked.remove(uid)
         save_data(data)
     if not blocked:
-        await query.edit_message_text("✅ Все разблокированы.", reply_markup=back_keyboard())
+        await safe_edit(query, "✅ Все разблокированы.", reply_markup=back_keyboard())
     else:
-        await query.edit_message_text(
+        await safe_edit(query, 
             f"✅ Разблокировано! Осталось: {len(blocked)}",
             reply_markup=admin_blocks_keyboard(blocked)
         )
@@ -1046,7 +1059,7 @@ async def handle_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     save_data(data)
     is_admin = query.from_user.id == ADMIN_ID
     try:
-        await query.edit_message_text(t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
+        await safe_edit(query, t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
     except Exception:
         await query.edit_message_caption(caption=t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
 
@@ -1061,7 +1074,7 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
     idx = int(query.data.replace("history_", ""))
     history = context.user_data.get("history", [])
     if idx >= len(history):
-        await query.edit_message_text("❌ Запись не найдена.")
+        await safe_edit(query, "❌ Запись не найдена.")
         return
 
     item = history[idx]
@@ -1075,10 +1088,10 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
 
     allowed, remaining = check_limit(update.effective_user.id)
     if not allowed:
-        await query.edit_message_text("⛔ Дневной лимит исчерпан.")
+        await safe_edit(query, "⛔ Дневной лимит исчерпан.")
         return
 
-    await query.edit_message_text(
+    await safe_edit(query, 
         f"🎬 Повтор: {item['platform']}\n{t(context, 'remaining', remaining=remaining)}\n\n{t(context, 'step1')}",
         reply_markup=format_keyboard()
     )
@@ -1093,18 +1106,18 @@ async def handle_format_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     if fmt == "audio":
         context.user_data["quality"] = "best"
-        await query.edit_message_text(f"🎵 {platform} • MP3\n\n🔊 Шаг 2 — уровень звука:", reply_markup=audio_keyboard())
+        await safe_edit(query, f"🎵 {platform} • MP3\n\n🔊 Шаг 2 — уровень звука:", reply_markup=audio_keyboard())
     elif fmt == "gif":
         context.user_data["quality"] = "480"
         context.user_data["audio"] = "mute"
         context.user_data["orientation"] = "original"
-        await query.edit_message_text(f"🌀 {platform} • GIF\n\n✂️ Хочешь обрезать?", reply_markup=trim_keyboard())
+        await safe_edit(query, f"🌀 {platform} • GIF\n\n✂️ Хочешь обрезать?", reply_markup=trim_keyboard())
     elif fmt == "playlist":
         context.user_data["audio"] = "normal"
         context.user_data["orientation"] = "original"
-        await query.edit_message_text(f"📋 {platform} • Плейлист\n\n📐 Шаг 2 — качество:", reply_markup=quality_keyboard())
+        await safe_edit(query, f"📋 {platform} • Плейлист\n\n📐 Шаг 2 — качество:", reply_markup=quality_keyboard())
     else:
-        await query.edit_message_text(f"🎬 {platform} • Видео\n\n📐 Шаг 2 — качество:", reply_markup=quality_keyboard())
+        await safe_edit(query, f"🎬 {platform} • Видео\n\n📐 Шаг 2 — качество:", reply_markup=quality_keyboard())
 
 async def handle_quality_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -1117,11 +1130,11 @@ async def handle_quality_callback(update: Update, context: ContextTypes.DEFAULT_
     ql = QUALITY_LABELS.get(quality, quality)
 
     if fmt == "playlist":
-        await query.edit_message_text(f"⏳ Скачиваю плейлист...\nСкачано видео: 0", reply_markup=cancel_keyboard())
+        await safe_edit(query, f"⏳ Скачиваю плейлист...\nСкачано видео: 0", reply_markup=cancel_keyboard())
         await _run_download(query.from_user, query.message, context)
         return
 
-    await query.edit_message_text(f"🎬 {platform} • {ql}\n\n🔊 Шаг 3 — уровень звука:", reply_markup=audio_keyboard())
+    await safe_edit(query, f"🎬 {platform} • {ql}\n\n🔊 Шаг 3 — уровень звука:", reply_markup=audio_keyboard())
 
 async def handle_audio_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -1137,12 +1150,12 @@ async def handle_audio_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if fmt == "audio":
         context.user_data["orientation"] = "original"
         context.user_data["subtitles"] = False
-        await query.edit_message_text(f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
+        await safe_edit(query, f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
         await _run_download(query.from_user, query.message, context)
         return
 
     subs_on = context.user_data.get("subtitles", False)
-    await query.edit_message_text(
+    await safe_edit(query, 
         f"🎬 {platform} • {ql} • {al}\n\n"
         f"📐 Шаг 4 — ориентация и доп. настройки:",
         reply_markup=orientation_keyboard(subs_on)
@@ -1164,7 +1177,7 @@ async def handle_orientation_callback(update: Update, context: ContextTypes.DEFA
         trim_s = context.user_data.get("trim_start")
         trim_e = context.user_data.get("trim_end")
         trim_info = f"\n✂️ Обрезка: {trim_s} → {trim_e}" if trim_s and trim_e else ""
-        await query.edit_message_text(
+        await safe_edit(query, 
             f"🎬 {platform} • {ql} • {al}{trim_info}\n\nВыбери ориентацию или нажми «Скачать»:",
             reply_markup=orientation_keyboard(subs_on)
         )
@@ -1174,7 +1187,7 @@ async def handle_orientation_callback(update: Update, context: ContextTypes.DEFA
         context.user_data["waiting_trim"] = True
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
-        await query.edit_message_text(
+        await safe_edit(query, 
             "✂️ Введи время начала обрезки (М:СС)\nНапример: 0:15 или 1:30"
         )
         return
@@ -1182,7 +1195,7 @@ async def handle_orientation_callback(update: Update, context: ContextTypes.DEFA
     if data == "orient_download":
         if "orientation" not in context.user_data:
             context.user_data["orientation"] = "original"
-        await query.edit_message_text(f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
+        await safe_edit(query, f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
         await _run_download(query.from_user, query.message, context)
         return
 
@@ -1193,7 +1206,7 @@ async def handle_orientation_callback(update: Update, context: ContextTypes.DEFA
     trim_s = context.user_data.get("trim_start")
     trim_e = context.user_data.get("trim_end")
     trim_info = f"\n✂️ Обрезка: {trim_s} → {trim_e}" if trim_s and trim_e else ""
-    await query.edit_message_text(
+    await safe_edit(query, 
         f"🎬 {platform} • {ql} • {al}\n"
         f"📐 {orient_labels.get(orient, orient)}{trim_info}\n\n"
         f"Нажми «Скачать» или измени опции:",
@@ -1208,13 +1221,13 @@ async def handle_trim_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
         context.user_data["subtitles"] = False
-        await query.edit_message_text(f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
+        await safe_edit(query, f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
         await _run_download(query.from_user, query.message, context)
     else:
         context.user_data["waiting_trim"] = True
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
-        await query.edit_message_text(
+        await safe_edit(query, 
             "✂️ Введи время начала обрезки (М:СС)\nНапример: 0:15 или 1:30"
         )
 
@@ -1223,7 +1236,7 @@ async def handle_cancel_callback(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer("Отменяю...")
     flag = context.user_data.get("cancel_flag", {})
     flag["cancelled"] = True
-    await query.edit_message_text("❌ Загрузка отменена.")
+    await safe_edit(query, "❌ Загрузка отменена.")
 
 # ─── Финальное скачивание ─────────────────────────────────────────────────────
 
