@@ -229,11 +229,11 @@ SUPPORTED_PATTERNS = [
 ]
 
 QUALITY_OPTIONS = {
-    "360":  "best[height<=360][ext=mp4][vcodec!=none][acodec!=none]/best[height<=360][ext=mp4]/best[height<=360]",
-    "480":  "best[height<=480][ext=mp4][vcodec!=none][acodec!=none]/best[height<=480][ext=mp4]/best[height<=480]",
-    "720":  "best[height<=720][ext=mp4][vcodec!=none][acodec!=none]/best[height<=720][ext=mp4]/best[height<=720]",
-    "1080": "best[height<=1080][ext=mp4][vcodec!=none][acodec!=none]/best[height<=1080][ext=mp4]/best[height<=1080]",
-    "best": "best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best",
+    "360":  "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360][ext=mp4]/best[height<=360]",
+    "480":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]",
+    "720":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]",
+    "1080": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]",
+    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
 }
 QUALITY_LABELS = {"360": "360p", "480": "480p", "720": "720p HD", "1080": "1080p FHD", "best": "Макс."}
 
@@ -527,7 +527,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
     ydl_opts = {
         "outtmpl": str(output_path / "%(id)s.%(ext)s"),
         "format": format_with_fallback,
-        # merge_output_format убран — используем форматы без слияния (не нужен ffmpeg)
+        "merge_output_format": "mp4" if fmt != "audio" else None,
         "quiet": True,
         "no_warnings": True,
         "progress_hooks": [progress_hook],
