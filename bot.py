@@ -31,13 +31,20 @@ DAILY_LIMIT  = 20             # скачиваний в день на польз
 HISTORY_SIZE = 10             # сколько ссылок хранить в истории
 MAX_FILE_MB  = 50             # лимит Telegram в МБ
 
-DOWNLOAD_DIR = Path("downloads")
+# На Railway данные хранятся в /app/data (Volume), локально — в текущей папке
+DATA_DIR = Path(os.environ.get("DATA_DIR", "."))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+DOWNLOAD_DIR = DATA_DIR / "downloads"
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
-DATA_FILE = Path("data.json")
+DATA_FILE = DATA_DIR / "data.json"
 
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
 BOT_VERSION  = os.environ.get("BOT_VERSION", "1.1")        # ← меняй при каждом обновлении
+
+# Пользователи которые писали боту в текущей сессии (в памяти)
+ACTIVE_USERS: dict[int, str] = {}  # user_id -> lang
 
 # Патч-ноты для каждой версии
 PATCH_NOTES = {
@@ -674,6 +681,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     # ── Обычный режим: ждём ссылку ──
+    ACTIVE_USERS[user.id] = get_lang(context)
+
     if is_blocked(user.id):
         await update.message.reply_text(t(context, "blocked"))
         return
@@ -718,6 +727,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 # ─── Команды ─────────────────────────────────────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    ACTIVE_USERS[update.effective_user.id] = get_lang(context)
     lang = get_lang(context)
     other_lang = "en" if lang == "ru" else "ru"
     lang_label = TEXTS[other_lang]["lang_btn"] if other_lang in TEXTS else "🌍 English"
@@ -799,6 +809,49 @@ async def patchnote_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     lang = get_lang(context)
     text = notes.get(lang, notes.get("ru", ""))
     await update.message.reply_text(text)
+
+async def sendpatch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Админская команда — рассылает патч-ноут всем активным пользователям."""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Нет доступа.")
+        return
+
+    # Берём версию из аргумента или текущую
+    version = context.args[0] if context.args else BOT_VERSION
+    notes = PATCH_NOTES.get(version)
+    if not notes:
+        versions = ", ".join(PATCH_NOTES.keys())
+        await update.message.reply_text(
+            f"❌ Нет патч-нота для версии {version}.\nДоступные версии: {versions}"
+        )
+        return
+
+    if not ACTIVE_USERS:
+        await update.message.reply_text("📭 Нет активных пользователей в этой сессии.")
+        return
+
+    status = await update.message.reply_text(
+        f"📤 Рассылаю патч-ноут v{version} для {len(ACTIVE_USERS)} пользователей..."
+    )
+    sent = 0
+    failed = 0
+    for uid, lang in ACTIVE_USERS.items():
+        if uid == ADMIN_ID:
+            continue
+        try:
+            text = notes.get(lang, notes.get("ru", ""))
+            await context.bot.send_message(chat_id=uid, text=text)
+            sent += 1
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            logger.warning(f"Не удалось отправить {uid}: {e}")
+            failed += 1
+
+    await status.edit_text(
+        f"✅ Патч-ноут v{version} разослан!\n\n"
+        f"📨 Отправлено: {sent}\n"
+        f"❌ Не доставлено: {failed}"
+    )
 
 async def broadcast_patchnote(app, version: str):
     """Рассылает патч-ноут всем пользователям кто есть в data.json."""
@@ -1277,20 +1330,14 @@ def main() -> None:
     import asyncio
     asyncio.set_event_loop(asyncio.new_event_loop())
 
-    async def post_init(application):
-        """Запускается после старта — рассылаем патч-ноут если не рассылали."""
-        data = get_data()
-        broadcasted = data.get("broadcasted_versions", [])
-        if BOT_VERSION not in broadcasted:
-            await broadcast_patchnote(application, BOT_VERSION)
-
-    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start",     start))
     app.add_handler(CommandHandler("help",      help_command))
     app.add_handler(CommandHandler("history",   history_command))
     app.add_handler(CommandHandler("me",        me_command))
     app.add_handler(CommandHandler("patchnote", patchnote_command))
+    app.add_handler(CommandHandler("sendpatch", sendpatch_command))
     app.add_handler(CommandHandler("stats",     stats_command))
     app.add_handler(CommandHandler("block",     block_command))
     app.add_handler(CommandHandler("unblock",   unblock_command))
