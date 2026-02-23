@@ -9,7 +9,7 @@ import random
 from pathlib import Path
 from datetime import datetime, date
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, filters, ContextTypes
@@ -367,8 +367,24 @@ def main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
         ])
     return InlineKeyboardMarkup(rows)
 
+def main_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Постоянная клавиатура под полем ввода."""
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton("🎛 Меню")]],
+        resize_keyboard=True,
+        is_persistent=True
+    )
+
 def back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="menu_back")]])
+
+def persistent_menu_keyboard() -> ReplyKeyboardMarkup:
+    """Постоянная кнопка под полем ввода."""
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton("🎛 Меню")]],
+        resize_keyboard=True,
+        is_persistent=True
+    )
 
 def lang_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -714,6 +730,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user = update.effective_user
     text = update.message.text.strip()
 
+    # Кнопка "Меню" под полем ввода
+    if text == "🎛 Меню":
+        ACTIVE_USERS[user.id] = get_lang(context)
+        await update.message.reply_text(
+            "🎛 Главное меню\n\nВыбери что хочешь сделать:",
+            reply_markup=menu_keyboard(user.id == ADMIN_ID)
+        )
+        return
+
     # Режим ввода времени обрезки
     if context.user_data.get("waiting_trim"):
         if context.user_data.get("trim_start") is None:
@@ -799,6 +824,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     ACTIVE_USERS[user.id] = get_lang(context)
     is_admin = user.id == ADMIN_ID
+
+    # Показываем постоянную кнопку меню
+    await update.message.reply_text("👇", reply_markup=persistent_menu_keyboard())
 
     photo_url = "https://i.imgur.com/4M34hi2.png"
     try:
