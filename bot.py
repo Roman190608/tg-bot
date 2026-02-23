@@ -36,6 +36,116 @@ DOWNLOAD_DIR.mkdir(exist_ok=True)
 
 DATA_FILE = Path("data.json")
 
+BOT_USERNAME = @balerndownloadsbot  # ← укажи username бота без @
+BOT_VERSION  = 1.1        # ← меняй при каждом обновлении
+
+# Патч-ноты для каждой версии
+PATCH_NOTES = {
+    "1.1": {
+        "ru": (
+            "🆕 Обновление v1.1\n\n"
+            "• 🌍 Добавлена поддержка английского языка\n"
+            "• 📊 Команда /me — твоя личная статистика\n"
+            "• 📤 Кнопка 'Поделиться ботом' в /start\n"
+            "• 🖼 Красивое приветствие с картинкой\n"
+            "• 💾 История скачиваний теперь сохраняется после перезапуска"
+        ),
+        "en": (
+            "🆕 Update v1.1\n\n"
+            "• 🌍 English language support added\n"
+            "• 📊 /me command — your personal stats\n"
+            "• 📤 'Share bot' button in /start\n"
+            "• 🖼 Beautiful welcome message with image\n"
+            "• 💾 Download history now persists after restart"
+        ),
+    },
+}
+
+# ─── Переводы ────────────────────────────────────────────────────────────────
+
+TEXTS = {
+    "ru": {
+        "start_caption": (
+            "👋 О, новый пользователь! Уже загружаю котиков... шучу.\n\n"
+            "Я скачиваю видео из TikTok, YouTube, Twitter, VK и других платформ.\n"
+            "Просто кинь ссылку и выбери что тебе нужно — видео, MP3, GIF или даже целый плейлист.\n\n"
+            "Поехали! 🚀"
+        ),
+        "help": (
+            "📌 Как пользоваться:\n\n"
+            "1. Отправь ссылку на видео\n"
+            "2. Выбери формат (видео / MP3 / GIF / плейлист)\n"
+            "3. Выбери качество и уровень звука\n"
+            "4. Выбери ориентацию, включи субтитры если нужно, обрежь видео или нажми «Скачать»\n\n"
+            "⚠️ Лимит: 50 МБ и 20 скачиваний в день\n\n"
+            "/history — последние 10 ссылок\n"
+            "/me — моя статистика"
+        ),
+        "history_empty": "📭 История пуста.",
+        "history_title": "🕘 Последние скачивания (нажми чтобы скачать снова):",
+        "blocked": "🚫 Ты заблокирован.",
+        "limit": "⛔ Достигнут дневной лимит ({limit} скачиваний).\nВозвращайся завтра!",
+        "no_url": "🔗 Пришли мне ссылку на видео.",
+        "unsupported": "❌ Платформа не поддерживается.\nПоддерживаются: TikTok, YouTube, Twitter, VK, Twitch, Reddit.",
+        "step1": "📦 Шаг 1 — выбери формат:",
+        "remaining": "Осталось скачиваний сегодня: {remaining}",
+        "share_text": "🎬 Этот бот скачивает видео из TikTok, YouTube, Twitter и других платформ!\nПопробуй: @{username}",
+        "share_btn": "📤 Поделиться ботом",
+        "lang_btn": "🌍 English",
+        "me": (
+            "👤 Твоя статистика:\n\n"
+            "📥 Всего скачиваний: {total}\n"
+            "❤️ Любимая платформа: {fav}\n"
+            "📅 Сегодня: {today} из {limit}"
+        ),
+        "me_empty": "📭 Ты ещё ничего не скачивал!",
+    },
+    "en": {
+        "start_caption": (
+            "👋 Oh, a new user! Already loading cats... just kidding.\n\n"
+            "I download videos from TikTok, YouTube, Twitter, VK and other platforms.\n"
+            "Just send a link and choose what you need — video, MP3, GIF or even a whole playlist.\n\n"
+            "Let's go! 🚀"
+        ),
+        "help": (
+            "📌 How to use:\n\n"
+            "1. Send a video link\n"
+            "2. Choose format (video / MP3 / GIF / playlist)\n"
+            "3. Choose quality and audio level\n"
+            "4. Choose orientation, enable subtitles, trim video or press Download\n\n"
+            "⚠️ Limit: 50 MB and 20 downloads per day\n\n"
+            "/history — last 10 links\n"
+            "/me — my statistics"
+        ),
+        "history_empty": "📭 History is empty.",
+        "history_title": "🕘 Recent downloads (tap to download again):",
+        "blocked": "🚫 You are blocked.",
+        "limit": "⛔ Daily limit reached ({limit} downloads).\nCome back tomorrow!",
+        "no_url": "🔗 Send me a video link.",
+        "unsupported": "❌ Platform not supported.\nSupported: TikTok, YouTube, Twitter, VK, Twitch, Reddit.",
+        "step1": "📦 Step 1 — choose format:",
+        "remaining": "Downloads left today: {remaining}",
+        "share_text": "🎬 This bot downloads videos from TikTok, YouTube, Twitter and more!\nTry it: @{username}",
+        "share_btn": "📤 Share bot",
+        "lang_btn": "🇷🇺 Русский",
+        "me": (
+            "👤 Your statistics:\n\n"
+            "📥 Total downloads: {total}\n"
+            "❤️ Favourite platform: {fav}\n"
+            "📅 Today: {today} of {limit}"
+        ),
+        "me_empty": "📭 You haven't downloaded anything yet!",
+    }
+}
+
+def get_lang(context) -> str:
+    return context.user_data.get("lang", "ru")
+
+def t(context, key: str, **kwargs) -> str:
+    lang = get_lang(context)
+    text = TEXTS.get(lang, TEXTS["ru"]).get(key, key)
+    return text.format(**kwargs) if kwargs else text
+
 # ─── Хранилище данных ────────────────────────────────────────────────────────
 
 def load_data() -> dict:
@@ -255,6 +365,10 @@ def update_stats(user_id: int, platform: str):
     platforms[platform] = platforms.get(platform, 0) + 1
     users = stats.setdefault("users", {})
     users[uid] = users.get(uid, 0) + 1
+    # Статистика платформ по каждому пользователю (для /me)
+    user_platforms = data.setdefault("user_platforms", {})
+    user_plat = user_platforms.setdefault(uid, {})
+    user_plat[platform] = user_plat.get(platform, 0) + 1
     save_data(data)
 
 def check_limit(user_id: int) -> tuple[bool, int]:
@@ -274,10 +388,26 @@ def is_blocked(user_id: int) -> bool:
     return user_id in get_data().get("blocked", [])
 
 def add_to_history(context: ContextTypes.DEFAULT_TYPE, url: str, platform: str):
+    uid = str(context._user_id if hasattr(context, "_user_id") else "0")
+    # Сохраняем в user_data (в памяти)
     history = context.user_data.setdefault("history", [])
     history = [h for h in history if h.get("url") != url]
     history.insert(0, {"url": url, "platform": platform, "time": datetime.now().isoformat()})
     context.user_data["history"] = history[:HISTORY_SIZE]
+    # Дублируем в data.json (персистентно)
+    data = get_data()
+    user_histories = data.setdefault("histories", {})
+    uid = str(context.user_data.get("_uid", "0"))
+    h = user_histories.setdefault(uid, [])
+    h = [x for x in h if x.get("url") != url]
+    h.insert(0, {"url": url, "platform": platform, "time": datetime.now().isoformat()})
+    user_histories[uid] = h[:HISTORY_SIZE]
+    save_data(data)
+
+def load_history_from_db(user_id: int) -> list:
+    """Загружает историю из data.json при старте сессии."""
+    data = get_data()
+    return data.get("histories", {}).get(str(user_id), [])
 
 # ─── Скачивание ───────────────────────────────────────────────────────────────
 
@@ -545,33 +675,33 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     # ── Обычный режим: ждём ссылку ──
     if is_blocked(user.id):
-        await update.message.reply_text("🚫 Ты заблокирован.")
+        await update.message.reply_text(t(context, "blocked"))
         return
 
     allowed, remaining = check_limit(user.id)
     if not allowed:
-        await update.message.reply_text(
-            f"⛔ Достигнут дневной лимит ({DAILY_LIMIT} скачиваний).\nВозвращайся завтра!"
-        )
+        await update.message.reply_text(t(context, "limit", limit=DAILY_LIMIT))
         return
 
     urls = re.findall(r"https?://[^\s]+", text)
     if not urls:
-        await update.message.reply_text("🔗 Пришли мне ссылку на видео.")
+        await update.message.reply_text(t(context, "no_url"))
         return
 
     url = urls[0]
     if not is_supported_url(url):
-        await update.message.reply_text(
-            "❌ Платформа не поддерживается.\n"
-            "Поддерживаются: TikTok, Instagram, YouTube, Twitter, VK, Twitch, Reddit."
-        )
+        await update.message.reply_text(t(context, "unsupported"))
         return
 
     platform = get_platform(url)
     context.user_data["pending_url"] = url
     context.user_data["platform"] = platform
     context.user_data["cancel_flag"] = {"cancelled": False}
+    context.user_data["_uid"] = str(user.id)
+    # Загружаем историю из БД если ещё не загружена
+    if "history_loaded" not in context.user_data:
+        context.user_data["history"] = load_history_from_db(user.id)
+        context.user_data["history_loaded"] = True
     # Сброс предыдущих настроек
     context.user_data["trim_start"] = None
     context.user_data["trim_end"] = None
@@ -580,42 +710,127 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     await update.message.reply_text(
         f"🎬 Видео с {platform}\n"
-        f"Осталось скачиваний сегодня: {remaining}\n\n"
-        f"📦 Шаг 1 — выбери формат:",
+        f"{t(context, 'remaining', remaining=remaining)}\n\n"
+        f"{t(context, 'step1')}",
         reply_markup=format_keyboard()
     )
 
 # ─── Команды ─────────────────────────────────────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        "👋 Привет! Я скачиваю видео из:\n\n"
-        "TikTok • Instagram • YouTube • Twitter • VK • Twitch • Reddit\n\n"
-        "Просто отправь ссылку 🎬\n\n"
-        "/history — история скачиваний\n"
-        "/help — помощь"
-    )
+    lang = get_lang(context)
+    other_lang = "en" if lang == "ru" else "ru"
+    lang_label = TEXTS[other_lang]["lang_btn"] if other_lang in TEXTS else "🌍 English"
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            t(context, "share_btn"),
+            switch_inline_query=t(context, "share_text", username=BOT_USERNAME)
+        )],
+        [InlineKeyboardButton(lang_label, callback_data=f"lang_{other_lang}")],
+    ])
+
+    photo_url = "https://i.imgur.com/4M34hi2.png"  # можешь заменить на свою картинку
+    try:
+        await update.message.reply_photo(
+            photo=photo_url,
+            caption=t(context, "start_caption"),
+            reply_markup=keyboard
+        )
+    except Exception:
+        # Если картинка не загрузилась — шлём просто текст
+        await update.message.reply_text(
+            t(context, "start_caption"),
+            reply_markup=keyboard
+        )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        "📌 Как пользоваться:\n\n"
-        "1. Отправь ссылку на видео\n"
-        "2. Выбери формат (видео / MP3 / GIF / плейлист)\n"
-        "3. Выбери качество и уровень звука\n"
-        "4. Выбери ориентацию, включи субтитры если нужно, обрежь видео или нажми «Скачать»\n\n"
-        "⚠️ Лимит: 50 МБ и 20 скачиваний в день\n\n"
-        "/history — последние 10 ссылок"
-    )
+    await update.message.reply_text(t(context, "help"))
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Загружаем из БД если ещё не загружена
+    if "history_loaded" not in context.user_data:
+        context.user_data["history"] = load_history_from_db(update.effective_user.id)
+        context.user_data["history_loaded"] = True
     history = context.user_data.get("history", [])
     if not history:
-        await update.message.reply_text("📭 История пуста.")
+        await update.message.reply_text(t(context, "history_empty"))
         return
     await update.message.reply_text(
-        "🕘 Последние скачивания (нажми чтобы скачать снова):",
+        t(context, "history_title"),
         reply_markup=history_keyboard(history)
     )
+
+async def me_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Личная статистика пользователя."""
+    user = update.effective_user
+    data = get_data()
+    uid = str(user.id)
+    stats = data.get("stats", {})
+    user_total = stats.get("users", {}).get(uid, 0)
+
+    if user_total == 0:
+        await update.message.reply_text(t(context, "me_empty"))
+        return
+
+    # Любимая платформа — ищем в data по пользователю
+    user_platforms = data.get("user_platforms", {}).get(uid, {})
+    if user_platforms:
+        fav = max(user_platforms.items(), key=lambda x: x[1])[0]
+    else:
+        fav = "—"
+
+    today_count = data.get("downloads_today", {}).get(uid, 0)
+
+    await update.message.reply_text(t(
+        context, "me",
+        total=user_total,
+        fav=fav,
+        today=today_count,
+        limit=DAILY_LIMIT
+    ))
+
+async def patchnote_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает патч-ноут текущей версии."""
+    notes = PATCH_NOTES.get(BOT_VERSION)
+    if not notes:
+        await update.message.reply_text(f"📋 Версия {BOT_VERSION} — нет патч-нотов.")
+        return
+    lang = get_lang(context)
+    text = notes.get(lang, notes.get("ru", ""))
+    await update.message.reply_text(text)
+
+async def broadcast_patchnote(app, version: str):
+    """Рассылает патч-ноут всем пользователям кто есть в data.json."""
+    notes = PATCH_NOTES.get(version)
+    if not notes:
+        logger.info(f"Нет патч-нота для версии {version}, рассылка пропущена.")
+        return
+
+    data = get_data()
+    # Собираем всех известных пользователей
+    user_ids = set(data.get("stats", {}).get("users", {}).keys())
+    if not user_ids:
+        logger.info("Нет пользователей для рассылки.")
+        return
+
+    logger.info(f"Рассылаем патч-ноут v{version} для {len(user_ids)} пользователей...")
+    sent = 0
+    for uid in user_ids:
+        try:
+            # Определяем язык пользователя (по умолчанию ru)
+            lang = data.get("user_langs", {}).get(uid, "ru")
+            text = notes.get(lang, notes.get("ru", ""))
+            await app.bot.send_message(chat_id=int(uid), text=text)
+            sent += 1
+            await asyncio.sleep(0.05)  # небольшая пауза чтобы не спамить Telegram API
+        except Exception as e:
+            logger.warning(f"Не удалось отправить {uid}: {e}")
+
+    logger.info(f"Патч-ноут разослан {sent}/{len(user_ids)} пользователям.")
+    # Отмечаем что эта версия уже разослана
+    data.setdefault("broadcasted_versions", []).append(version)
+    save_data(data)
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != ADMIN_ID:
@@ -678,6 +893,32 @@ async def unblock_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("Не был заблокирован.")
 
 # ─── Callback-обработчики ─────────────────────────────────────────────────────
+
+async def handle_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    lang = query.data.replace("lang_", "")
+    context.user_data["lang"] = lang
+    # Сохраняем язык в data.json
+    data = get_data()
+    data.setdefault("user_langs", {})[str(query.from_user.id)] = lang
+    save_data(data)
+
+    other_lang = "en" if lang == "ru" else "ru"
+    lang_label = TEXTS[other_lang]["lang_btn"]
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            t(context, "share_btn"),
+            switch_inline_query=t(context, "share_text", username=BOT_USERNAME)
+        )],
+        [InlineKeyboardButton(lang_label, callback_data=f"lang_{other_lang}")],
+    ])
+
+    await query.edit_message_caption(
+        caption=t(context, "start_caption"),
+        reply_markup=keyboard
+    )
 
 async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -1036,15 +1277,25 @@ def main() -> None:
     import asyncio
     asyncio.set_event_loop(asyncio.new_event_loop())
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    async def post_init(application):
+        """Запускается после старта — рассылаем патч-ноут если не рассылали."""
+        data = get_data()
+        broadcasted = data.get("broadcasted_versions", [])
+        if BOT_VERSION not in broadcasted:
+            await broadcast_patchnote(application, BOT_VERSION)
 
-    app.add_handler(CommandHandler("start",   start))
-    app.add_handler(CommandHandler("help",    help_command))
-    app.add_handler(CommandHandler("history", history_command))
-    app.add_handler(CommandHandler("stats",   stats_command))
-    app.add_handler(CommandHandler("block",   block_command))
-    app.add_handler(CommandHandler("unblock", unblock_command))
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
+    app.add_handler(CommandHandler("start",     start))
+    app.add_handler(CommandHandler("help",      help_command))
+    app.add_handler(CommandHandler("history",   history_command))
+    app.add_handler(CommandHandler("me",        me_command))
+    app.add_handler(CommandHandler("patchnote", patchnote_command))
+    app.add_handler(CommandHandler("stats",     stats_command))
+    app.add_handler(CommandHandler("block",     block_command))
+    app.add_handler(CommandHandler("unblock",   unblock_command))
+
+    app.add_handler(CallbackQueryHandler(handle_lang_callback,        pattern="^lang_"))
     app.add_handler(CallbackQueryHandler(handle_history_callback,     pattern="^history_"))
     app.add_handler(CallbackQueryHandler(handle_format_callback,      pattern="^fmt_"))
     app.add_handler(CallbackQueryHandler(handle_quality_callback,     pattern="^quality_"))
@@ -1053,7 +1304,6 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handle_trim_callback,        pattern="^trim_"))
     app.add_handler(CallbackQueryHandler(handle_cancel_callback,      pattern="^cancel_download"))
 
-    # Единый обработчик текста — решает конфликт обрезки
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     logger.info("Бот запущен...")
