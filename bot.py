@@ -665,26 +665,32 @@ async def _add_subtitles(url: str, video_path: Path, platform: str) -> tuple[Pat
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-    try:
-        await loop.run_in_executor(None, _dl_subs)
-        srt_files = list(video_path.parent.glob(video_path.stem + "*.srt"))
-        if not srt_files:
-            return video_path, "⚠️ Субтитры недоступны для этого видео"
-        srt_file = srt_files[0]
-        cmd = ["ffmpeg", "-y", "-i", str(video_path), "-vf", f"subtitles={str(srt_file)}", "-c:a", "copy", str(output_path)]
-        ok = ffmpeg_run(cmd)
-        srt_file.unlink(missing_ok=True)
-        if ok and output_path.exists():
-            return output_path, None
-        return video_path, "⚠️ Не удалось вшить субтитры"
-    except Exception as e:
-        err = str(e)
-        if "429" in err:
-            warn = "⚠️ Субтитры: слишком много запросов (429)"
-        else:
-            warn = "⚠️ Субтитры недоступны"
-        logger.error(f"Ошибка субтитров: {e}")
-        return video_path, warn
+    for attempt in range(3):
+        try:
+            if attempt > 0:
+                await asyncio.sleep(5 * attempt)
+            await loop.run_in_executor(None, _dl_subs)
+            srt_files = list(video_path.parent.glob(video_path.stem + "*.srt"))
+            if not srt_files:
+                return video_path, "⚠️ Субтитры недоступны для этого видео"
+            srt_file = srt_files[0]
+            srt_str = str(srt_file).replace("\\", "/").replace(":", "\\:")
+            cmd = ["ffmpeg", "-y", "-i", str(video_path), "-vf", f"subtitles={srt_str}", "-c:a", "copy", str(output_path)]
+            ok = ffmpeg_run(cmd)
+            srt_file.unlink(missing_ok=True)
+            if ok and output_path.exists():
+                return output_path, None
+            return video_path, "⚠️ Не удалось вшить субтитры"
+        except Exception as e:
+            err = str(e)
+            if "429" in err:
+                if attempt < 2:
+                    logger.warning(f"429 субтитры, попытка {attempt+1}/3, ждём {5*(attempt+1)} сек...")
+                    continue
+                return video_path, "⚠️ YouTube блокирует субтитры — попробуй чуть позже"
+            logger.error(f"Ошибка субтитров: {e}")
+            return video_path, "⚠️ Субтитры недоступны"
+    return video_path, "⚠️ Не удалось получить субтитры"
 
 async def _notify_admin(user, platform, fmt, context):
     try:
@@ -1352,6 +1358,7 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
         subs_warning = None
         if subtitles and fmt == "video":
             await status_msg.edit_text("📝 Добавляю субтитры...")
+            await asyncio.sleep(3)  # пауза чтобы YouTube не банил за 429
             new, subs_warning = await _add_subtitles(url, current, platform)
             if new != current and new not in files_to_clean:
                 files_to_clean.append(new)
