@@ -735,7 +735,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         ACTIVE_USERS[user.id] = get_lang(context)
         await update.message.reply_text(
             "🎛 Главное меню\n\nВыбери что хочешь сделать:",
-            reply_markup=menu_keyboard(user.id == ADMIN_ID)
+            reply_markup=main_menu_keyboard(user.id == ADMIN_ID)
         )
         return
 
