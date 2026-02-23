@@ -1,9 +1,11 @@
 import re
+import os
 import asyncio
 import logging
 import subprocess
 import json
 import zipfile
+import random
 from pathlib import Path
 from datetime import datetime, date
 
@@ -13,6 +15,23 @@ from telegram.ext import (
     CallbackQueryHandler, filters, ContextTypes
 )
 import yt_dlp
+
+# ─── ffmpeg — ищем системный или из imageio-ffmpeg ───────────────────────────
+
+def _setup_ffmpeg():
+    import shutil
+    if shutil.which("ffmpeg"):
+        return
+    try:
+        import imageio_ffmpeg
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+        ffmpeg_dir = str(Path(ffmpeg_path).parent)
+        os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+        logging.info(f"ffmpeg найден: {ffmpeg_path}")
+    except Exception as e:
+        logging.warning(f"ffmpeg не найден: {e}")
+
+_setup_ffmpeg()
 
 # ─── Логирование ─────────────────────────────────────────────────────────────
 
@@ -24,46 +43,44 @@ logger = logging.getLogger(__name__)
 
 # ─── Конфиг ──────────────────────────────────────────────────────────────────
 
-import os
 BOT_TOKEN = "8322503182:AAF8C0Ojhu6OPCMLakURfWdm7TeycsCK9vQ"
-ADMIN_ID     = 649566280  # ← задаётся в переменных Railway
-DAILY_LIMIT  = 20             # скачиваний в день на пользователя
-HISTORY_SIZE = 10             # сколько ссылок хранить в истории
-MAX_FILE_MB  = 50             # лимит Telegram в МБ
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
+BOT_VERSION  = os.environ.get("BOT_VERSION", "1.1")
+ADMIN_ID     = 649566280
+DAILY_LIMIT  = 20
+HISTORY_SIZE = 10
+MAX_FILE_MB  = 50
 
-# На Railway данные хранятся в /app/data (Volume), локально — в текущей папке
 DATA_DIR = Path(os.environ.get("DATA_DIR", "."))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-
 DOWNLOAD_DIR = DATA_DIR / "downloads"
 DOWNLOAD_DIR.mkdir(exist_ok=True)
-
 DATA_FILE = DATA_DIR / "data.json"
 
-BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
-BOT_VERSION  = os.environ.get("BOT_VERSION", "1.1")        # ← меняй при каждом обновлении
+# Активные пользователи в текущей сессии: user_id -> lang
+ACTIVE_USERS: dict[int, str] = {}
 
-# Пользователи которые писали боту в текущей сессии (в памяти)
-ACTIVE_USERS: dict[int, str] = {}  # user_id -> lang
+# ─── Патч-ноты ───────────────────────────────────────────────────────────────
 
-# Патч-ноты для каждой версии
 PATCH_NOTES = {
     "1.1": {
         "ru": (
             "🆕 Обновление v1.1\n\n"
-            "• 🌍 Добавлена поддержка английского языка\n"
+            "• 🎛 Интерактивное меню /menu — всё в одном месте\n"
+            "• 🌍 Поддержка английского языка\n"
             "• 📊 Команда /me — твоя личная статистика\n"
-            "• 📤 Кнопка 'Поделиться ботом' в /start\n"
+            "• 📤 Кнопка «Поделиться ботом»\n"
             "• 🖼 Красивое приветствие с картинкой\n"
-            "• 💾 История скачиваний теперь сохраняется после перезапуска"
+            "• 💾 История скачиваний сохраняется между сессиями"
         ),
         "en": (
             "🆕 Update v1.1\n\n"
-            "• 🌍 English language support added\n"
+            "• 🎛 Interactive menu /menu — everything in one place\n"
+            "• 🌍 English language support\n"
             "• 📊 /me command — your personal stats\n"
-            "• 📤 'Share bot' button in /start\n"
-            "• 🖼 Beautiful welcome message with image\n"
-            "• 💾 Download history now persists after restart"
+            "• 📤 Share bot button\n"
+            "• 🖼 Beautiful welcome message\n"
+            "• 💾 Download history saved between sessions"
         ),
     },
 }
@@ -83,8 +100,9 @@ TEXTS = {
             "1. Отправь ссылку на видео\n"
             "2. Выбери формат (видео / MP3 / GIF / плейлист)\n"
             "3. Выбери качество и уровень звука\n"
-            "4. Выбери ориентацию, включи субтитры если нужно, обрежь видео или нажми «Скачать»\n\n"
+            "4. Выбери ориентацию, включи субтитры, обрежь видео или нажми «Скачать»\n\n"
             "⚠️ Лимит: 50 МБ и 20 скачиваний в день\n\n"
+            "/menu — открыть меню\n"
             "/history — последние 10 ссылок\n"
             "/me — моя статистика"
         ),
@@ -96,9 +114,6 @@ TEXTS = {
         "unsupported": "❌ Платформа не поддерживается.\nПоддерживаются: TikTok, YouTube, Twitter, VK, Twitch, Reddit.",
         "step1": "📦 Шаг 1 — выбери формат:",
         "remaining": "Осталось скачиваний сегодня: {remaining}",
-        "share_text": "🎬 Этот бот скачивает видео из TikTok, YouTube, Twitter и других платформ!\nПопробуй: @{username}",
-        "share_btn": "📤 Поделиться ботом",
-        "lang_btn": "🌍 English",
         "me": (
             "👤 Твоя статистика:\n\n"
             "📥 Всего скачиваний: {total}\n"
@@ -106,6 +121,7 @@ TEXTS = {
             "📅 Сегодня: {today} из {limit}"
         ),
         "me_empty": "📭 Ты ещё ничего не скачивал!",
+        "menu_title": "🎛 Главное меню:",
     },
     "en": {
         "start_caption": (
@@ -119,8 +135,9 @@ TEXTS = {
             "1. Send a video link\n"
             "2. Choose format (video / MP3 / GIF / playlist)\n"
             "3. Choose quality and audio level\n"
-            "4. Choose orientation, enable subtitles, trim video or press Download\n\n"
+            "4. Choose orientation, enable subtitles, trim or press Download\n\n"
             "⚠️ Limit: 50 MB and 20 downloads per day\n\n"
+            "/menu — open menu\n"
             "/history — last 10 links\n"
             "/me — my statistics"
         ),
@@ -132,9 +149,6 @@ TEXTS = {
         "unsupported": "❌ Platform not supported.\nSupported: TikTok, YouTube, Twitter, VK, Twitch, Reddit.",
         "step1": "📦 Step 1 — choose format:",
         "remaining": "Downloads left today: {remaining}",
-        "share_text": "🎬 This bot downloads videos from TikTok, YouTube, Twitter and more!\nTry it: @{username}",
-        "share_btn": "📤 Share bot",
-        "lang_btn": "🇷🇺 Русский",
         "me": (
             "👤 Your statistics:\n\n"
             "📥 Total downloads: {total}\n"
@@ -142,6 +156,7 @@ TEXTS = {
             "📅 Today: {today} of {limit}"
         ),
         "me_empty": "📭 You haven't downloaded anything yet!",
+        "menu_title": "🎛 Main menu:",
     }
 }
 
@@ -180,6 +195,7 @@ SUPPORTED_PATTERNS = [
     r"tiktok\.com", r"vm\.tiktok\.com",
     r"instagram\.com", r"instagr\.am",
     r"youtube\.com/shorts", r"youtu\.be",
+    r"youtube\.com/watch",
     r"twitter\.com", r"x\.com",
     r"vk\.com", r"clips\.twitch\.tv",
     r"reddit\.com",
@@ -201,6 +217,31 @@ AUDIO_OPTIONS = {
     "loud":   (2.0, "📢 Громче"),
 }
 
+FUNNY_MESSAGES = [
+    "🐱 Ищем котиков в интернете...",
+    "🦠 Сканируем интернет на вирусы...",
+    "🕵️ Следим за соседями через веб-камеру...",
+    "🍕 Заказываем пиццу на твой адрес...",
+    "🤖 Обучаем нейросеть на твоих фото...",
+    "🐢 Ждём пока черепаха донесёт данные...",
+    "☕ Завариваем кофе для сервера...",
+    "🌍 Объезжаем весь интернет на велосипеде...",
+    "👽 Связываемся с инопланетянами для помощи...",
+    "🎲 Бросаем кубик чтобы решить что делать...",
+    "🐿️ Белка грызёт оптоволокно, чуть подождём...",
+    "💾 Перематываем кассету обратно...",
+    "🧙 Читаем заклинания для ускорения загрузки...",
+    "🏃 Курьер бежит с флешкой, уже близко...",
+    "🔮 Предсказываем когда это закончится...",
+    "🌊 Ныряем на дно океана за кабелем...",
+    "🐧 Пингвины толкают сервер лапками...",
+    "📡 Ловим сигнал со спутника над Антарктидой...",
+    "🍌 Угощаем хомяков в датацентре бананами...",
+    "⚙️ Крутим шестерёнки вручную...",
+]
+
+RETRY_DELAYS = [5, 15]
+
 
 def is_supported_url(url: str) -> bool:
     return any(re.search(p, url, re.IGNORECASE) for p in SUPPORTED_PATTERNS)
@@ -220,7 +261,101 @@ def get_platform(url: str) -> str:
             return name
     return "Видео"
 
+def make_progress_bar(percent: int) -> str:
+    filled = int(percent / 10)
+    return f"[{'█' * filled}{'░' * (10 - filled)}] {percent}%"
+
+def get_funny_status(pct: int) -> str:
+    return f"{random.choice(FUNNY_MESSAGES)}\n{make_progress_bar(pct)}"
+
+# ─── Данные пользователей ─────────────────────────────────────────────────────
+
+def update_stats(user_id: int, platform: str):
+    data = get_data()
+    uid = str(user_id)
+    stats = data.setdefault("stats", {})
+    stats["total"] = stats.get("total", 0) + 1
+    platforms = stats.setdefault("platforms", {})
+    platforms[platform] = platforms.get(platform, 0) + 1
+    users = stats.setdefault("users", {})
+    users[uid] = users.get(uid, 0) + 1
+    user_platforms = data.setdefault("user_platforms", {})
+    up = user_platforms.setdefault(uid, {})
+    up[platform] = up.get(platform, 0) + 1
+    save_data(data)
+
+def check_limit(user_id: int) -> tuple[bool, int]:
+    data = get_data()
+    uid = str(user_id)
+    today_count = data.get("downloads_today", {}).get(uid, 0)
+    return today_count < DAILY_LIMIT, DAILY_LIMIT - today_count
+
+def increment_limit(user_id: int):
+    data = get_data()
+    uid = str(user_id)
+    dt = data.setdefault("downloads_today", {})
+    dt[uid] = dt.get(uid, 0) + 1
+    save_data(data)
+
+def is_blocked(user_id: int) -> bool:
+    return user_id in get_data().get("blocked", [])
+
+def add_to_history(context: ContextTypes.DEFAULT_TYPE, url: str, platform: str):
+    history = context.user_data.setdefault("history", [])
+    history = [h for h in history if h.get("url") != url]
+    history.insert(0, {"url": url, "platform": platform, "time": datetime.now().isoformat()})
+    context.user_data["history"] = history[:HISTORY_SIZE]
+    # Сохраняем в data.json
+    uid = str(context.user_data.get("_uid", "0"))
+    if uid != "0":
+        data = get_data()
+        h = data.setdefault("histories", {}).setdefault(uid, [])
+        h = [x for x in h if x.get("url") != url]
+        h.insert(0, {"url": url, "platform": platform, "time": datetime.now().isoformat()})
+        data["histories"][uid] = h[:HISTORY_SIZE]
+        save_data(data)
+
+def load_history_from_db(user_id: int) -> list:
+    return get_data().get("histories", {}).get(str(user_id), [])
+
 # ─── Клавиатуры ──────────────────────────────────────────────────────────────
+
+def main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton("⬇️ Скачать видео",    callback_data="menu_download"),
+         InlineKeyboardButton("🕘 История",           callback_data="menu_history")],
+        [InlineKeyboardButton("📊 Моя статистика",   callback_data="menu_me"),
+         InlineKeyboardButton("📋 Патч-ноут",        callback_data="menu_patchnote")],
+        [InlineKeyboardButton("❓ Помощь",            callback_data="menu_help"),
+         InlineKeyboardButton("🌍 Язык",             callback_data="menu_lang")],
+        [InlineKeyboardButton("📤 Поделиться",       switch_inline_query=f"Скачиваю видео из TikTok, YouTube и не только! @{BOT_USERNAME}")],
+    ]
+    if is_admin:
+        rows.append([
+            InlineKeyboardButton("📊 Стат. бота",    callback_data="menu_stats"),
+            InlineKeyboardButton("🚫 Блокировки",    callback_data="menu_blocks"),
+        ])
+        rows.append([
+            InlineKeyboardButton("📢 Разослать патч-ноут", callback_data="menu_sendpatch"),
+        ])
+    return InlineKeyboardMarkup(rows)
+
+def back_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="menu_back")]])
+
+def lang_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
+         InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
+        [InlineKeyboardButton("◀️ Назад",   callback_data="menu_back")],
+    ])
+
+def admin_blocks_keyboard(blocked: list) -> InlineKeyboardMarkup:
+    rows = []
+    for uid in blocked[:10]:
+        rows.append([InlineKeyboardButton(f"🔓 {uid}", callback_data=f"adm_unblock_{uid}")])
+    rows.append([InlineKeyboardButton("◀️ Назад", callback_data="menu_back")])
+    return InlineKeyboardMarkup(rows)
 
 def format_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -232,11 +367,11 @@ def format_keyboard() -> InlineKeyboardMarkup:
 
 def quality_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("360p",           callback_data="quality_360"),
-         InlineKeyboardButton("480p",           callback_data="quality_480")],
-        [InlineKeyboardButton("720p HD",        callback_data="quality_720"),
-         InlineKeyboardButton("1080p FHD",      callback_data="quality_1080")],
-        [InlineKeyboardButton("🏆 Максимальное",callback_data="quality_best")],
+        [InlineKeyboardButton("360p",            callback_data="quality_360"),
+         InlineKeyboardButton("480p",            callback_data="quality_480")],
+        [InlineKeyboardButton("720p HD",         callback_data="quality_720"),
+         InlineKeyboardButton("1080p FHD",       callback_data="quality_1080")],
+        [InlineKeyboardButton("🏆 Максимальное", callback_data="quality_best")],
     ])
 
 def audio_keyboard() -> InlineKeyboardMarkup:
@@ -248,15 +383,14 @@ def audio_keyboard() -> InlineKeyboardMarkup:
     ])
 
 def orientation_keyboard(subs_on: bool = False) -> InlineKeyboardMarkup:
-    """Ориентация + переключатель субтитров + кнопка Скачать."""
     subs_label = "📝 Субтитры: ВКЛ ✅" if subs_on else "📝 Субтитры: ВЫКЛ ❌"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📱 Оригинал",            callback_data="orient_original"),
-         InlineKeyboardButton("⬛ Квадрат (1:1)",       callback_data="orient_square")],
-        [InlineKeyboardButton("🖼 Горизонталь (16:9)",  callback_data="orient_landscape")],
-        [InlineKeyboardButton(subs_label,               callback_data="orient_toggle_subs")],
-        [InlineKeyboardButton("✂️ Обрезать видео",      callback_data="orient_trim")],
-        [InlineKeyboardButton("⬇️ Скачать сейчас",     callback_data="orient_download")],
+        [InlineKeyboardButton("📱 Оригинал",           callback_data="orient_original"),
+         InlineKeyboardButton("⬛ Квадрат (1:1)",      callback_data="orient_square")],
+        [InlineKeyboardButton("🖼 Горизонталь (16:9)", callback_data="orient_landscape")],
+        [InlineKeyboardButton(subs_label,              callback_data="orient_toggle_subs")],
+        [InlineKeyboardButton("✂️ Обрезать видео",     callback_data="orient_trim")],
+        [InlineKeyboardButton("⬇️ Скачать сейчас",    callback_data="orient_download")],
     ])
 
 def trim_keyboard() -> InlineKeyboardMarkup:
@@ -266,9 +400,7 @@ def trim_keyboard() -> InlineKeyboardMarkup:
     ])
 
 def cancel_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("❌ Отменить", callback_data="cancel_download")]
-    ])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отменить", callback_data="cancel_download")]])
 
 def history_keyboard(history: list) -> InlineKeyboardMarkup:
     buttons = []
@@ -279,7 +411,7 @@ def history_keyboard(history: list) -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton("❌ Закрыть", callback_data="history_close")])
     return InlineKeyboardMarkup(buttons)
 
-# ─── Утилиты ─────────────────────────────────────────────────────────────────
+# ─── Утилиты ffmpeg ───────────────────────────────────────────────────────────
 
 def ffmpeg_run(cmd: list) -> bool:
     result = subprocess.run(cmd, capture_output=True)
@@ -329,104 +461,15 @@ def convert_to_gif(input_path: Path) -> Path:
 def time_str_valid(t: str) -> bool:
     return bool(re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", t.strip()))
 
-def make_progress_bar(percent: int) -> str:
-    filled = int(percent / 10)
-    bar = "█" * filled + "░" * (10 - filled)
-    return f"[{bar}] {percent}%"
-
-FUNNY_MESSAGES = [
-    "🐱 Ищем котиков в интернете...",
-    "🦠 Сканируем интернет на вирусы...",
-    "🕵️ Следим за соседями через веб-камеру...",
-    "🍕 Заказываем пиццу на твой адрес...",
-    "🤖 Обучаем нейросеть на твоих фото...",
-    "🐢 Ждём пока черепаха донесёт данные...",
-    "☕ Завариваем кофе для сервера...",
-    "🌍 Объезжаем весь интернет на велосипеде...",
-    "👽 Связываемся с инопланетянами для помощи...",
-    "🎲 Бросаем кубик чтобы решить что делать...",
-    "🐿️ Белка грызёт оптоволокно, чуть подождём...",
-    "💾 Перематываем кассету обратно...",
-    "🧙 Читаем заклинания для ускорения загрузки...",
-    "🏃 Курьер бежит с флешкой, уже близко...",
-    "🔮 Предсказываем когда это закончится...",
-    "🌊 Ныряем на дно океана за кабелем...",
-    "🐧 Пингвины толкают сервер лапками...",
-    "📡 Ловим сигнал со спутника над Антарктидой...",
-    "🍌 Угощаем хомяков в датацентре бананами...",
-    "⚙️ Крутим шестерёнки вручную...",
-]
-
-import random
-
-def get_funny_status(pct: int) -> str:
-    msg = random.choice(FUNNY_MESSAGES)
-    return f"{msg}\n{make_progress_bar(pct)}"
-
-def update_stats(user_id: int, platform: str):
-    data = get_data()
-    uid = str(user_id)
-    stats = data.setdefault("stats", {})
-    stats["total"] = stats.get("total", 0) + 1
-    platforms = stats.setdefault("platforms", {})
-    platforms[platform] = platforms.get(platform, 0) + 1
-    users = stats.setdefault("users", {})
-    users[uid] = users.get(uid, 0) + 1
-    # Статистика платформ по каждому пользователю (для /me)
-    user_platforms = data.setdefault("user_platforms", {})
-    user_plat = user_platforms.setdefault(uid, {})
-    user_plat[platform] = user_plat.get(platform, 0) + 1
-    save_data(data)
-
-def check_limit(user_id: int) -> tuple[bool, int]:
-    data = get_data()
-    uid = str(user_id)
-    today_count = data.get("downloads_today", {}).get(uid, 0)
-    return today_count < DAILY_LIMIT, DAILY_LIMIT - today_count
-
-def increment_limit(user_id: int):
-    data = get_data()
-    uid = str(user_id)
-    dt = data.setdefault("downloads_today", {})
-    dt[uid] = dt.get(uid, 0) + 1
-    save_data(data)
-
-def is_blocked(user_id: int) -> bool:
-    return user_id in get_data().get("blocked", [])
-
-def add_to_history(context: ContextTypes.DEFAULT_TYPE, url: str, platform: str):
-    uid = str(context._user_id if hasattr(context, "_user_id") else "0")
-    # Сохраняем в user_data (в памяти)
-    history = context.user_data.setdefault("history", [])
-    history = [h for h in history if h.get("url") != url]
-    history.insert(0, {"url": url, "platform": platform, "time": datetime.now().isoformat()})
-    context.user_data["history"] = history[:HISTORY_SIZE]
-    # Дублируем в data.json (персистентно)
-    data = get_data()
-    user_histories = data.setdefault("histories", {})
-    uid = str(context.user_data.get("_uid", "0"))
-    h = user_histories.setdefault(uid, [])
-    h = [x for x in h if x.get("url") != url]
-    h.insert(0, {"url": url, "platform": platform, "time": datetime.now().isoformat()})
-    user_histories[uid] = h[:HISTORY_SIZE]
-    save_data(data)
-
-def load_history_from_db(user_id: int) -> list:
-    """Загружает историю из data.json при старте сессии."""
-    data = get_data()
-    return data.get("histories", {}).get(str(user_id), [])
-
 # ─── Скачивание ───────────────────────────────────────────────────────────────
-
-RETRY_DELAYS = [5, 15]  # паузы между попытками в секундах
 
 async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt="video") -> Path | None:
     format_str = QUALITY_OPTIONS.get(quality, QUALITY_OPTIONS["best"])
     if fmt == "audio":
         format_str = "bestaudio/best"
 
+    format_with_fallback = format_str + "/best/bestvideo+bestaudio"
     last_update = {"pct": -1}
-    # Захватываем loop ДО запуска потока — внутри потока он недоступен
     loop = asyncio.get_event_loop()
 
     def progress_hook(d):
@@ -444,11 +487,8 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
                             f"⏳ {get_funny_status(pct)}",
                             reply_markup=cancel_keyboard()
                         ),
-                        loop  # используем захваченный loop
+                        loop
                     )
-
-    # Для TikTok добавляем универсальный fallback в конец строки формата
-    format_with_fallback = format_str + "/best/bestvideo+bestaudio"
 
     ydl_opts = {
         "outtmpl": str(output_path / "%(id)s.%(ext)s"),
@@ -484,7 +524,6 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
                     return mp4
             return p
 
-    # Retry loop: 3 попытки с паузами
     for attempt in range(3):
         if cancel_flag.get("cancelled"):
             return None
@@ -503,7 +542,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
                     loop
                 )
                 await asyncio.sleep(delay)
-                last_update["pct"] = -1  # сбрасываем прогресс для новой попытки
+                last_update["pct"] = -1
 
             return await loop.run_in_executor(None, _download)
 
@@ -512,14 +551,10 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
             if "CANCELLED" in err:
                 return None
             logger.error(f"Попытка {attempt + 1}/3 не удалась: {e}")
-            # Если ошибка формата — retry не поможет, выходим сразу
-            if "Requested format is not available" in err or "format" in err.lower() and "available" in err.lower():
-                logger.error("Ошибка формата — retry бесполезен, выходим")
+            if "Requested format is not available" in err or ("format" in err.lower() and "available" in err.lower()):
                 return None
             if attempt == 2:
-                # Последняя попытка провалилась
                 return None
-            # Иначе продолжаем цикл retry
 
     return None
 
@@ -527,8 +562,7 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag) 
     playlist_dir = output_path / "playlist_tmp"
     playlist_dir.mkdir(exist_ok=True)
     count = {"n": 0}
-
-    loop = asyncio.get_event_loop()  # захватываем до запуска потока
+    loop = asyncio.get_event_loop()
 
     def progress_hook(d):
         if cancel_flag.get("cancelled"):
@@ -540,7 +574,7 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag) 
                     f"⏳ Скачиваю плейлист...\nСкачано видео: {count['n']}",
                     reply_markup=cancel_keyboard()
                 ),
-                loop  # используем захваченный loop
+                loop
             )
 
     ydl_opts = {
@@ -553,8 +587,6 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag) 
         "noplaylist": False,
         "playlistend": 20,
     }
-
-    loop = asyncio.get_event_loop()
 
     def _download():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -575,8 +607,10 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag) 
         logger.error(f"Ошибка плейлиста: {e}")
         return None
 
-async def _add_subtitles(url: str, video_path: Path) -> tuple[Path, str | None]:
-    """Возвращает (путь_к_видео, сообщение_об_ошибке_или_None)."""
+async def _add_subtitles(url: str, video_path: Path, platform: str) -> tuple[Path, str | None]:
+    if platform == "TikTok":
+        return video_path, "⚠️ TikTok не поддерживает субтитры"
+
     output_path = video_path.with_stem(video_path.stem + "_sub")
     ydl_opts = {
         "skip_download": True,
@@ -586,6 +620,7 @@ async def _add_subtitles(url: str, video_path: Path) -> tuple[Path, str | None]:
         "outtmpl": str(video_path.with_suffix("")),
         "quiet": True,
         "no_warnings": True,
+        "cookiefile": "cookies.txt" if Path("cookies.txt").exists() else None,
     }
     loop = asyncio.get_event_loop()
 
@@ -608,7 +643,7 @@ async def _add_subtitles(url: str, video_path: Path) -> tuple[Path, str | None]:
     except Exception as e:
         err = str(e)
         if "429" in err:
-            warn = "⚠️ Субтитры: слишком много запросов (429), попробуй позже"
+            warn = "⚠️ Субтитры: слишком много запросов (429)"
         else:
             warn = "⚠️ Субтитры недоступны"
         logger.error(f"Ошибка субтитров: {e}")
@@ -630,30 +665,23 @@ async def _notify_admin(user, platform, fmt, context):
     except Exception:
         pass
 
-# ─── Основной обработчик текста (объединённый) ───────────────────────────────
+# ─── Основной обработчик текста ───────────────────────────────────────────────
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Единый обработчик текста: ввод ссылки ИЛИ времени обрезки."""
     user = update.effective_user
     text = update.message.text.strip()
 
-    # ── Режим ввода времени обрезки ──
+    # Режим ввода времени обрезки
     if context.user_data.get("waiting_trim"):
         if context.user_data.get("trim_start") is None:
-            # Ждём время начала
             if not time_str_valid(text):
-                await update.message.reply_text(
-                    "❌ Неверный формат. Введи время, например: 0:15 или 1:30:00"
-                )
+                await update.message.reply_text("❌ Неверный формат. Введи время, например: 0:15 или 1:30:00")
                 return
             context.user_data["trim_start"] = text
             await update.message.reply_text(f"✅ Начало: {text}\n\nТеперь введи время конца:")
         else:
-            # Ждём время конца
             if not time_str_valid(text):
-                await update.message.reply_text(
-                    "❌ Неверный формат. Введи время, например: 0:45 или 2:00:00"
-                )
+                await update.message.reply_text("❌ Неверный формат. Введи время, например: 0:45 или 2:00:00")
                 return
             context.user_data["trim_end"] = text
             context.user_data["waiting_trim"] = False
@@ -666,7 +694,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 )
                 await _run_download(update.effective_user, status_msg, context)
             else:
-                # Для видео — возвращаемся к экрану ориентации
                 subs_on = context.user_data.get("subtitles", False)
                 platform = context.user_data.get("platform", "Видео")
                 ql = QUALITY_LABELS.get(context.user_data.get("quality", "best"), "")
@@ -680,7 +707,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 )
         return
 
-    # ── Обычный режим: ждём ссылку ──
+    # Регистрируем пользователя
     ACTIVE_USERS[user.id] = get_lang(context)
 
     if is_blocked(user.id):
@@ -707,15 +734,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     context.user_data["platform"] = platform
     context.user_data["cancel_flag"] = {"cancelled": False}
     context.user_data["_uid"] = str(user.id)
-    # Загружаем историю из БД если ещё не загружена
-    if "history_loaded" not in context.user_data:
-        context.user_data["history"] = load_history_from_db(user.id)
-        context.user_data["history_loaded"] = True
-    # Сброс предыдущих настроек
     context.user_data["trim_start"] = None
     context.user_data["trim_end"] = None
     context.user_data["subtitles"] = False
     context.user_data["waiting_trim"] = False
+
+    if "history_loaded" not in context.user_data:
+        context.user_data["history"] = load_history_from_db(user.id)
+        context.user_data["history_loaded"] = True
 
     await update.message.reply_text(
         f"🎬 Видео с {platform}\n"
@@ -727,38 +753,35 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 # ─── Команды ─────────────────────────────────────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    ACTIVE_USERS[update.effective_user.id] = get_lang(context)
-    lang = get_lang(context)
-    other_lang = "en" if lang == "ru" else "ru"
-    lang_label = TEXTS[other_lang]["lang_btn"] if other_lang in TEXTS else "🌍 English"
+    user = update.effective_user
+    ACTIVE_USERS[user.id] = get_lang(context)
+    is_admin = user.id == ADMIN_ID
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            t(context, "share_btn"),
-            switch_inline_query=t(context, "share_text", username=BOT_USERNAME)
-        )],
-        [InlineKeyboardButton(lang_label, callback_data=f"lang_{other_lang}")],
-    ])
-
-    photo_url = "https://i.imgur.com/4M34hi2.png"  # можешь заменить на свою картинку
+    photo_url = "https://i.imgur.com/4M34hi2.png"
     try:
         await update.message.reply_photo(
             photo=photo_url,
             caption=t(context, "start_caption"),
-            reply_markup=keyboard
+            reply_markup=main_menu_keyboard(is_admin)
         )
     except Exception:
-        # Если картинка не загрузилась — шлём просто текст
         await update.message.reply_text(
             t(context, "start_caption"),
-            reply_markup=keyboard
+            reply_markup=main_menu_keyboard(is_admin)
         )
+
+async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    ACTIVE_USERS[user.id] = get_lang(context)
+    await update.message.reply_text(
+        t(context, "menu_title"),
+        reply_markup=main_menu_keyboard(user.id == ADMIN_ID)
+    )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(t(context, "help"))
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Загружаем из БД если ещё не загружена
     if "history_loaded" not in context.user_data:
         context.user_data["history"] = load_history_from_db(update.effective_user.id)
         context.user_data["history_loaded"] = True
@@ -766,73 +789,44 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not history:
         await update.message.reply_text(t(context, "history_empty"))
         return
-    await update.message.reply_text(
-        t(context, "history_title"),
-        reply_markup=history_keyboard(history)
-    )
+    await update.message.reply_text(t(context, "history_title"), reply_markup=history_keyboard(history))
 
 async def me_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Личная статистика пользователя."""
     user = update.effective_user
     data = get_data()
     uid = str(user.id)
     stats = data.get("stats", {})
     user_total = stats.get("users", {}).get(uid, 0)
-
     if user_total == 0:
         await update.message.reply_text(t(context, "me_empty"))
         return
-
-    # Любимая платформа — ищем в data по пользователю
     user_platforms = data.get("user_platforms", {}).get(uid, {})
-    if user_platforms:
-        fav = max(user_platforms.items(), key=lambda x: x[1])[0]
-    else:
-        fav = "—"
-
+    fav = max(user_platforms.items(), key=lambda x: x[1])[0] if user_platforms else "—"
     today_count = data.get("downloads_today", {}).get(uid, 0)
-
-    await update.message.reply_text(t(
-        context, "me",
-        total=user_total,
-        fav=fav,
-        today=today_count,
-        limit=DAILY_LIMIT
-    ))
+    await update.message.reply_text(t(context, "me", total=user_total, fav=fav, today=today_count, limit=DAILY_LIMIT))
 
 async def patchnote_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Показывает патч-ноут текущей версии."""
     notes = PATCH_NOTES.get(BOT_VERSION)
     if not notes:
         await update.message.reply_text(f"📋 Версия {BOT_VERSION} — нет патч-нотов.")
         return
     lang = get_lang(context)
-    text = notes.get(lang, notes.get("ru", ""))
-    await update.message.reply_text(text)
+    await update.message.reply_text(notes.get(lang, notes.get("ru", "")))
 
 async def sendpatch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Админская команда — рассылает патч-ноут всем активным пользователям."""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Нет доступа.")
         return
-
-    # Берём версию из аргумента или текущую
     version = context.args[0] if context.args else BOT_VERSION
     notes = PATCH_NOTES.get(version)
     if not notes:
         versions = ", ".join(PATCH_NOTES.keys())
-        await update.message.reply_text(
-            f"❌ Нет патч-нота для версии {version}.\nДоступные версии: {versions}"
-        )
+        await update.message.reply_text(f"❌ Нет патч-нота для версии {version}.\nДоступные: {versions}")
         return
-
     if not ACTIVE_USERS:
-        await update.message.reply_text("📭 Нет активных пользователей в этой сессии.")
+        await update.message.reply_text("📭 Нет активных пользователей.")
         return
-
-    status = await update.message.reply_text(
-        f"📤 Рассылаю патч-ноут v{version} для {len(ACTIVE_USERS)} пользователей..."
-    )
+    status = await update.message.reply_text(f"📤 Рассылаю v{version} для {len(ACTIVE_USERS)} польз...")
     sent = 0
     failed = 0
     for uid, lang in ACTIVE_USERS.items():
@@ -846,44 +840,7 @@ async def sendpatch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         except Exception as e:
             logger.warning(f"Не удалось отправить {uid}: {e}")
             failed += 1
-
-    await status.edit_text(
-        f"✅ Патч-ноут v{version} разослан!\n\n"
-        f"📨 Отправлено: {sent}\n"
-        f"❌ Не доставлено: {failed}"
-    )
-
-async def broadcast_patchnote(app, version: str):
-    """Рассылает патч-ноут всем пользователям кто есть в data.json."""
-    notes = PATCH_NOTES.get(version)
-    if not notes:
-        logger.info(f"Нет патч-нота для версии {version}, рассылка пропущена.")
-        return
-
-    data = get_data()
-    # Собираем всех известных пользователей
-    user_ids = set(data.get("stats", {}).get("users", {}).keys())
-    if not user_ids:
-        logger.info("Нет пользователей для рассылки.")
-        return
-
-    logger.info(f"Рассылаем патч-ноут v{version} для {len(user_ids)} пользователей...")
-    sent = 0
-    for uid in user_ids:
-        try:
-            # Определяем язык пользователя (по умолчанию ru)
-            lang = data.get("user_langs", {}).get(uid, "ru")
-            text = notes.get(lang, notes.get("ru", ""))
-            await app.bot.send_message(chat_id=int(uid), text=text)
-            sent += 1
-            await asyncio.sleep(0.05)  # небольшая пауза чтобы не спамить Telegram API
-        except Exception as e:
-            logger.warning(f"Не удалось отправить {uid}: {e}")
-
-    logger.info(f"Патч-ноут разослан {sent}/{len(user_ids)} пользователям.")
-    # Отмечаем что эта версия уже разослана
-    data.setdefault("broadcasted_versions", []).append(version)
-    save_data(data)
+    await status.edit_text(f"✅ Патч-ноут v{version} разослан!\n📨 Отправлено: {sent}\n❌ Не доставлено: {failed}")
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != ADMIN_ID:
@@ -899,6 +856,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"📊 Статистика:\n\n"
         f"Всего скачиваний: {total}\n"
         f"Уникальных пользователей: {len(stats.get('users', {}))}\n"
+        f"Активных в сессии: {len(ACTIVE_USERS)}\n"
         f"Заблокировано: {len(data.get('blocked', []))}\n\n"
         f"Топ платформы:\n{top_str}"
     )
@@ -947,31 +905,150 @@ async def unblock_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # ─── Callback-обработчики ─────────────────────────────────────────────────────
 
+async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+    is_admin = user.id == ADMIN_ID
+    action = query.data.replace("menu_", "")
+
+    if action == "back":
+        try:
+            await query.edit_message_text(t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
+        except Exception:
+            await query.edit_message_caption(caption=t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
+
+    elif action == "download":
+        await query.edit_message_text("🔗 Отправь мне ссылку на видео из TikTok, YouTube, Twitter, VK и других платформ.")
+
+    elif action == "history":
+        if "history_loaded" not in context.user_data:
+            context.user_data["history"] = load_history_from_db(user.id)
+            context.user_data["history_loaded"] = True
+        history = context.user_data.get("history", [])
+        if not history:
+            await query.edit_message_text(t(context, "history_empty"), reply_markup=back_keyboard())
+        else:
+            kb = InlineKeyboardMarkup(
+                history_keyboard(history).inline_keyboard +
+                [[InlineKeyboardButton("◀️ Назад", callback_data="menu_back")]]
+            )
+            await query.edit_message_text(t(context, "history_title"), reply_markup=kb)
+
+    elif action == "me":
+        data = get_data()
+        uid = str(user.id)
+        stats = data.get("stats", {})
+        user_total = stats.get("users", {}).get(uid, 0)
+        if user_total == 0:
+            text = t(context, "me_empty")
+        else:
+            user_platforms = data.get("user_platforms", {}).get(uid, {})
+            fav = max(user_platforms.items(), key=lambda x: x[1])[0] if user_platforms else "—"
+            today_count = data.get("downloads_today", {}).get(uid, 0)
+            text = t(context, "me", total=user_total, fav=fav, today=today_count, limit=DAILY_LIMIT)
+        await query.edit_message_text(text, reply_markup=back_keyboard())
+
+    elif action == "patchnote":
+        notes = PATCH_NOTES.get(BOT_VERSION)
+        lang = get_lang(context)
+        text = notes.get(lang, notes.get("ru", "")) if notes else f"Версия {BOT_VERSION} — нет патч-нотов."
+        await query.edit_message_text(text, reply_markup=back_keyboard())
+
+    elif action == "help":
+        await query.edit_message_text(t(context, "help"), reply_markup=back_keyboard())
+
+    elif action == "lang":
+        await query.edit_message_text("🌍 Выбери язык / Choose language:", reply_markup=lang_menu_keyboard())
+
+    elif action == "stats" and is_admin:
+        data = get_data()
+        stats = data.get("stats", {})
+        total = stats.get("total", 0)
+        platforms = stats.get("platforms", {})
+        top = sorted(platforms.items(), key=lambda x: x[1], reverse=True)
+        top_str = "\n".join(f"  {p}: {c}" for p, c in top[:5]) or "  —"
+        await query.edit_message_text(
+            f"📊 Статистика бота:\n\n"
+            f"Всего скачиваний: {total}\n"
+            f"Уникальных пользователей: {len(stats.get('users', {}))}\n"
+            f"Активных в сессии: {len(ACTIVE_USERS)}\n"
+            f"Заблокировано: {len(data.get('blocked', []))}\n\n"
+            f"Топ платформы:\n{top_str}",
+            reply_markup=back_keyboard()
+        )
+
+    elif action == "blocks" and is_admin:
+        data = get_data()
+        blocked = data.get("blocked", [])
+        if not blocked:
+            await query.edit_message_text("✅ Заблокированных нет.", reply_markup=back_keyboard())
+        else:
+            await query.edit_message_text(
+                f"🚫 Заблокировано: {len(blocked)}\nНажми чтобы разблокировать:",
+                reply_markup=admin_blocks_keyboard(blocked)
+            )
+
+    elif action == "sendpatch" and is_admin:
+        notes = PATCH_NOTES.get(BOT_VERSION)
+        if not notes:
+            await query.edit_message_text(f"❌ Нет патч-нота для v{BOT_VERSION}.", reply_markup=back_keyboard())
+            return
+        if not ACTIVE_USERS:
+            await query.edit_message_text("📭 Нет активных пользователей.", reply_markup=back_keyboard())
+            return
+        await query.edit_message_text(f"📤 Рассылаю v{BOT_VERSION}...")
+        sent = 0
+        failed = 0
+        for uid, lang in ACTIVE_USERS.items():
+            if uid == ADMIN_ID:
+                continue
+            try:
+                text = notes.get(lang, notes.get("ru", ""))
+                await query.get_bot().send_message(chat_id=uid, text=text)
+                sent += 1
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logger.warning(f"Не удалось отправить {uid}: {e}")
+                failed += 1
+        await query.edit_message_text(
+            f"✅ Разослано!\n📨 Доставлено: {sent}\n❌ Не доставлено: {failed}",
+            reply_markup=back_keyboard()
+        )
+
+async def handle_adm_unblock_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ADMIN_ID:
+        return
+    uid = int(query.data.replace("adm_unblock_", ""))
+    data = get_data()
+    blocked = data.get("blocked", [])
+    if uid in blocked:
+        blocked.remove(uid)
+        save_data(data)
+    if not blocked:
+        await query.edit_message_text("✅ Все разблокированы.", reply_markup=back_keyboard())
+    else:
+        await query.edit_message_text(
+            f"✅ Разблокировано! Осталось: {len(blocked)}",
+            reply_markup=admin_blocks_keyboard(blocked)
+        )
+
 async def handle_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     lang = query.data.replace("lang_", "")
     context.user_data["lang"] = lang
-    # Сохраняем язык в data.json
+    ACTIVE_USERS[query.from_user.id] = lang
     data = get_data()
     data.setdefault("user_langs", {})[str(query.from_user.id)] = lang
     save_data(data)
-
-    other_lang = "en" if lang == "ru" else "ru"
-    lang_label = TEXTS[other_lang]["lang_btn"]
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            t(context, "share_btn"),
-            switch_inline_query=t(context, "share_text", username=BOT_USERNAME)
-        )],
-        [InlineKeyboardButton(lang_label, callback_data=f"lang_{other_lang}")],
-    ])
-
-    await query.edit_message_caption(
-        caption=t(context, "start_caption"),
-        reply_markup=keyboard
-    )
+    is_admin = query.from_user.id == ADMIN_ID
+    try:
+        await query.edit_message_text(t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
+    except Exception:
+        await query.edit_message_caption(caption=t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
 
 async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -1002,7 +1079,7 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
         return
 
     await query.edit_message_text(
-        f"🎬 Повтор: {item['platform']}\nОсталось сегодня: {remaining}\n\n📦 Выбери формат:",
+        f"🎬 Повтор: {item['platform']}\n{t(context, 'remaining', remaining=remaining)}\n\n{t(context, 'step1')}",
         reply_markup=format_keyboard()
     )
 
@@ -1016,30 +1093,18 @@ async def handle_format_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     if fmt == "audio":
         context.user_data["quality"] = "best"
-        await query.edit_message_text(
-            f"🎵 {platform} • MP3\n\n🔊 Шаг 2 — уровень звука:",
-            reply_markup=audio_keyboard()
-        )
+        await query.edit_message_text(f"🎵 {platform} • MP3\n\n🔊 Шаг 2 — уровень звука:", reply_markup=audio_keyboard())
     elif fmt == "gif":
         context.user_data["quality"] = "480"
         context.user_data["audio"] = "mute"
         context.user_data["orientation"] = "original"
-        await query.edit_message_text(
-            f"🌀 {platform} • GIF\n\n✂️ Хочешь обрезать?",
-            reply_markup=trim_keyboard()
-        )
+        await query.edit_message_text(f"🌀 {platform} • GIF\n\n✂️ Хочешь обрезать?", reply_markup=trim_keyboard())
     elif fmt == "playlist":
         context.user_data["audio"] = "normal"
         context.user_data["orientation"] = "original"
-        await query.edit_message_text(
-            f"📋 {platform} • Плейлист\n\n📐 Шаг 2 — качество:",
-            reply_markup=quality_keyboard()
-        )
+        await query.edit_message_text(f"📋 {platform} • Плейлист\n\n📐 Шаг 2 — качество:", reply_markup=quality_keyboard())
     else:
-        await query.edit_message_text(
-            f"🎬 {platform} • Видео\n\n📐 Шаг 2 — качество:",
-            reply_markup=quality_keyboard()
-        )
+        await query.edit_message_text(f"🎬 {platform} • Видео\n\n📐 Шаг 2 — качество:", reply_markup=quality_keyboard())
 
 async def handle_quality_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -1056,10 +1121,7 @@ async def handle_quality_callback(update: Update, context: ContextTypes.DEFAULT_
         await _run_download(query.from_user, query.message, context)
         return
 
-    await query.edit_message_text(
-        f"🎬 {platform} • {ql}\n\n🔊 Шаг 3 — уровень звука:",
-        reply_markup=audio_keyboard()
-    )
+    await query.edit_message_text(f"🎬 {platform} • {ql}\n\n🔊 Шаг 3 — уровень звука:", reply_markup=audio_keyboard())
 
 async def handle_audio_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -1073,7 +1135,6 @@ async def handle_audio_callback(update: Update, context: ContextTypes.DEFAULT_TY
     _, al = AUDIO_OPTIONS.get(audio, (1.0, "🔊 Обычный"))
 
     if fmt == "audio":
-        # MP3: после звука — субтитры не нужны, сразу качаем
         context.user_data["orientation"] = "original"
         context.user_data["subtitles"] = False
         await query.edit_message_text(f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
@@ -1083,8 +1144,7 @@ async def handle_audio_callback(update: Update, context: ContextTypes.DEFAULT_TY
     subs_on = context.user_data.get("subtitles", False)
     await query.edit_message_text(
         f"🎬 {platform} • {ql} • {al}\n\n"
-        f"📐 Шаг 4 — ориентация, субтитры, обрезка:\n"
-        f"Выбери ориентацию или дополнительные опции, затем нажми «Скачать»",
+        f"📐 Шаг 4 — ориентация и доп. настройки:",
         reply_markup=orientation_keyboard(subs_on)
     )
 
@@ -1098,52 +1158,41 @@ async def handle_orientation_callback(update: Update, context: ContextTypes.DEFA
     _, al = AUDIO_OPTIONS.get(context.user_data.get("audio", "normal"), (1.0, "🔊 Обычный"))
 
     if data == "orient_toggle_subs":
-        # Переключаем субтитры
         current = context.user_data.get("subtitles", False)
         context.user_data["subtitles"] = not current
         subs_on = context.user_data["subtitles"]
-        trim_info = ""
         trim_s = context.user_data.get("trim_start")
         trim_e = context.user_data.get("trim_end")
-        if trim_s and trim_e:
-            trim_info = f"\n✂️ Обрезка: {trim_s} → {trim_e}"
+        trim_info = f"\n✂️ Обрезка: {trim_s} → {trim_e}" if trim_s and trim_e else ""
         await query.edit_message_text(
-            f"🎬 {platform} • {ql} • {al}{trim_info}\n\n"
-            f"📐 Выбери ориентацию или нажми «Скачать»:",
+            f"🎬 {platform} • {ql} • {al}{trim_info}\n\nВыбери ориентацию или нажми «Скачать»:",
             reply_markup=orientation_keyboard(subs_on)
         )
         return
 
     if data == "orient_trim":
-        # Запускаем режим ввода времени обрезки
         context.user_data["waiting_trim"] = True
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
         await query.edit_message_text(
-            "✂️ Введи время начала обрезки в формате М:СС или ЧЧ:ММ:СС\n"
-            "Например: 0:15 или 1:30"
+            "✂️ Введи время начала обрезки (М:СС)\nНапример: 0:15 или 1:30"
         )
         return
 
     if data == "orient_download":
-        # Скачиваем с текущими настройками (ориентация остаётся предыдущей или "original")
         if "orientation" not in context.user_data:
             context.user_data["orientation"] = "original"
         await query.edit_message_text(f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
         await _run_download(query.from_user, query.message, context)
         return
 
-    # Установка ориентации
     orient = data.replace("orient_", "")
     context.user_data["orientation"] = orient
     orient_labels = {"original": "📱 Оригинал", "square": "⬛ Квадрат", "landscape": "🖼 Горизонталь"}
     subs_on = context.user_data.get("subtitles", False)
-    trim_info = ""
     trim_s = context.user_data.get("trim_start")
     trim_e = context.user_data.get("trim_end")
-    if trim_s and trim_e:
-        trim_info = f"\n✂️ Обрезка: {trim_s} → {trim_e}"
-
+    trim_info = f"\n✂️ Обрезка: {trim_s} → {trim_e}" if trim_s and trim_e else ""
     await query.edit_message_text(
         f"🎬 {platform} • {ql} • {al}\n"
         f"📐 {orient_labels.get(orient, orient)}{trim_info}\n\n"
@@ -1152,7 +1201,6 @@ async def handle_orientation_callback(update: Update, context: ContextTypes.DEFA
     )
 
 async def handle_trim_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Только для GIF — там нет экрана ориентации."""
     query = update.callback_query
     await query.answer()
 
@@ -1167,8 +1215,7 @@ async def handle_trim_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
         await query.edit_message_text(
-            "✂️ Введи время начала обрезки в формате М:СС\n"
-            "Например: 0:15 или 1:30"
+            "✂️ Введи время начала обрезки (М:СС)\nНапример: 0:15 или 1:30"
         )
 
 async def handle_cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1200,7 +1247,6 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        # Плейлист
         if fmt == "playlist":
             zip_path = await download_playlist(url, quality, DOWNLOAD_DIR, status_msg, cancel_flag)
             if cancel_flag.get("cancelled") or not zip_path or not zip_path.exists():
@@ -1217,7 +1263,6 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             await _notify_admin(user, platform, fmt, context)
             return
 
-        # Скачиваем видео/аудио
         file_path = await download_video(url, quality, DOWNLOAD_DIR, status_msg, cancel_flag, fmt)
 
         if cancel_flag.get("cancelled"):
@@ -1226,15 +1271,13 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
 
         if not file_path or not file_path.exists():
             await status_msg.edit_text(
-                "❌ Не удалось скачать.\n"
-                "• Приватный аккаунт\n• Видео удалено\n• Требуется авторизация"
+                "❌ Не удалось скачать.\n• Приватный аккаунт\n• Видео удалено\n• Требуется авторизация"
             )
             return
 
         files_to_clean.append(file_path)
         current = file_path
 
-        # Обрезка
         if trim_s and trim_e and fmt != "audio":
             await status_msg.edit_text("✂️ Обрезаю видео...")
             loop = asyncio.get_event_loop()
@@ -1242,7 +1285,6 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             if current != file_path:
                 files_to_clean.append(current)
 
-        # GIF
         if fmt == "gif":
             await status_msg.edit_text("🌀 Конвертирую в GIF...")
             loop = asyncio.get_event_loop()
@@ -1250,7 +1292,6 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             if current not in files_to_clean:
                 files_to_clean.append(current)
 
-        # Ориентация
         if fmt == "video" and orient != "original":
             await status_msg.edit_text("📐 Применяю ориентацию...")
             loop = asyncio.get_event_loop()
@@ -1258,19 +1299,14 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             if current not in files_to_clean:
                 files_to_clean.append(current)
 
-        # Субтитры (TikTok не поддерживает)
         subs_warning = None
         if subtitles and fmt == "video":
-            if platform == "TikTok":
-                subs_warning = "⚠️ TikTok не поддерживает субтитры"
-            else:
-                await status_msg.edit_text("📝 Добавляю субтитры...")
-                new, subs_warning = await _add_subtitles(url, current)
-                if new != current and new not in files_to_clean:
-                    files_to_clean.append(new)
-                current = new
+            await status_msg.edit_text("📝 Добавляю субтитры...")
+            new, subs_warning = await _add_subtitles(url, current, platform)
+            if new != current and new not in files_to_clean:
+                files_to_clean.append(new)
+            current = new
 
-        # Звук
         if fmt == "video" and volume != 1.0:
             await status_msg.edit_text("🎚️ Обрабатываю звук...")
             loop = asyncio.get_event_loop()
@@ -1278,7 +1314,6 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             if current not in files_to_clean:
                 files_to_clean.append(current)
 
-        # Проверка размера
         if current.stat().st_size > MAX_FILE_MB * 1024 * 1024:
             await status_msg.edit_text(f"❌ Файл больше {MAX_FILE_MB} МБ. Попробуй качество пониже.")
             return
@@ -1293,7 +1328,6 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             caption = f"✅ {platform} • {ql}"
             if audio_label != "🔊 Обычный":
                 caption += f" • {audio_label}"
-
         if subs_warning:
             caption += f"\n{subs_warning}"
 
@@ -1327,12 +1361,12 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
 # ─── Запуск ───────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    import asyncio
     asyncio.set_event_loop(asyncio.new_event_loop())
 
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start",     start))
+    app.add_handler(CommandHandler("menu",      menu_command))
     app.add_handler(CommandHandler("help",      help_command))
     app.add_handler(CommandHandler("history",   history_command))
     app.add_handler(CommandHandler("me",        me_command))
@@ -1342,6 +1376,8 @@ def main() -> None:
     app.add_handler(CommandHandler("block",     block_command))
     app.add_handler(CommandHandler("unblock",   unblock_command))
 
+    app.add_handler(CallbackQueryHandler(handle_menu_callback,        pattern="^menu_"))
+    app.add_handler(CallbackQueryHandler(handle_adm_unblock_callback, pattern="^adm_unblock_"))
     app.add_handler(CallbackQueryHandler(handle_lang_callback,        pattern="^lang_"))
     app.add_handler(CallbackQueryHandler(handle_history_callback,     pattern="^history_"))
     app.add_handler(CallbackQueryHandler(handle_format_callback,      pattern="^fmt_"))
