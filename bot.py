@@ -70,10 +70,10 @@ logger = logging.getLogger(__name__)
 
 # ─── Конфиг ──────────────────────────────────────────────────────────────────
 
-BOT_TOKEN = "8322503182:AAF8C0Ojhu6OPCMLakURfWdm7TeycsCK9vQ"
+BOT_TOKEN    = os.environ.get("BOT_TOKEN", "8322503182:AAF8C0Ojhu6OPCMLakURfWdm7TeycsCK9vQ")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
 BOT_VERSION  = os.environ.get("BOT_VERSION", "1.1")
-ADMIN_ID     = 649566280
+ADMIN_ID     = int(os.environ.get("ADMIN_ID", "123456789"))
 DAILY_LIMIT  = 20
 HISTORY_SIZE = 10
 MAX_FILE_MB  = 50
