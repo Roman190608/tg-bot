@@ -19,17 +19,32 @@ import yt_dlp
 # ─── ffmpeg — ищем системный или из imageio-ffmpeg ───────────────────────────
 
 def _setup_ffmpeg():
-    import shutil
-    if shutil.which("ffmpeg"):
+    import shutil, glob
+
+    # Попытка 1: системный ffmpeg
+    p = shutil.which("ffmpeg")
+    if p:
+        logging.info(f"ffmpeg найден в системе: {p}")
         return
+
+    # Попытка 2: imageio-ffmpeg
     try:
         import imageio_ffmpeg
         ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-        ffmpeg_dir = str(Path(ffmpeg_path).parent)
-        os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
-        logging.info(f"ffmpeg найден: {ffmpeg_path}")
+        os.environ["PATH"] = str(Path(ffmpeg_path).parent) + os.pathsep + os.environ.get("PATH", "")
+        logging.info(f"ffmpeg найден через imageio-ffmpeg: {ffmpeg_path}")
+        return
     except Exception as e:
-        logging.warning(f"ffmpeg не найден: {e}")
+        logging.warning(f"imageio-ffmpeg: {e}")
+
+    # Попытка 3: nix store (Railway использует Nix)
+    results = glob.glob("/nix/store/*/bin/ffmpeg")
+    if results:
+        os.environ["PATH"] = str(Path(results[0]).parent) + os.pathsep + os.environ.get("PATH", "")
+        logging.info(f"ffmpeg найден в nix store: {results[0]}")
+        return
+
+    logging.error("ffmpeg НЕ НАЙДЕН — скачивание с мержем форматов не будет работать!")
 
 _setup_ffmpeg()
 
@@ -46,7 +61,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = "8322503182:AAF8C0Ojhu6OPCMLakURfWdm7TeycsCK9vQ"
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
 BOT_VERSION  = os.environ.get("BOT_VERSION", "1.1")
-ADMIN_ID     = int(os.environ.get("ADMIN_ID", "649566280"))
+ADMIN_ID     = 649566280
 DAILY_LIMIT  = 20
 HISTORY_SIZE = 10
 MAX_FILE_MB  = 50
