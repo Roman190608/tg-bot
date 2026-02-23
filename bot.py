@@ -44,6 +44,18 @@ def _setup_ffmpeg():
         logging.info(f"ffmpeg найден в nix store: {results[0]}")
         return
 
+    # Попытка 4: установить через apt-get
+    logging.warning("ffmpeg не найден, пробуем установить через apt-get...")
+    try:
+        subprocess.run(["apt-get", "install", "-y", "-q", "ffmpeg"],
+                      capture_output=True, timeout=120)
+        p = shutil.which("ffmpeg")
+        if p:
+            logging.info(f"ffmpeg успешно установлен: {p}")
+            return
+    except Exception as e:
+        logging.warning(f"apt-get не сработал: {e}")
+
     logging.error("ffmpeg НЕ НАЙДЕН — скачивание с мержем форматов не будет работать!")
 
 _setup_ffmpeg()
