@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 # ─── Конфиг ──────────────────────────────────────────────────────────────────
 
 import os
-BOT_TOKEN    = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-ADMIN_ID     = int(os.environ.get("ADMIN_ID", "123456789"))  # ← задаётся в переменных Railway
+BOT_TOKEN = "8322503182:AAF8C0Ojhu6OPCMLakURfWdm7TeycsCK9vQ"
+ADMIN_ID     = 649566280  # ← задаётся в переменных Railway
 DAILY_LIMIT  = 20             # скачиваний в день на пользователя
 HISTORY_SIZE = 10             # сколько ссылок хранить в истории
 MAX_FILE_MB  = 50             # лимит Telegram в МБ
@@ -964,14 +964,17 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             if current not in files_to_clean:
                 files_to_clean.append(current)
 
-        # Субтитры
+        # Субтитры (TikTok не поддерживает)
         subs_warning = None
         if subtitles and fmt == "video":
-            await status_msg.edit_text("📝 Добавляю субтитры...")
-            new, subs_warning = await _add_subtitles(url, current)
-            if new != current and new not in files_to_clean:
-                files_to_clean.append(new)
-            current = new
+            if platform == "TikTok":
+                subs_warning = "⚠️ TikTok не поддерживает субтитры"
+            else:
+                await status_msg.edit_text("📝 Добавляю субтитры...")
+                new, subs_warning = await _add_subtitles(url, current)
+                if new != current and new not in files_to_clean:
+                    files_to_clean.append(new)
+                current = new
 
         # Звук
         if fmt == "video" and volume != 1.0:
