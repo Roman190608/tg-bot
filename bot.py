@@ -229,11 +229,11 @@ SUPPORTED_PATTERNS = [
 ]
 
 QUALITY_OPTIONS = {
-    "360":  "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360][ext=mp4]/best[height<=360]",
-    "480":  "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]",
-    "720":  "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]",
-    "1080": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]",
-    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+    "360":  "best[height<=360][ext=mp4][vcodec!=none][acodec!=none]/best[height<=360][ext=mp4]/best[height<=360]",
+    "480":  "best[height<=480][ext=mp4][vcodec!=none][acodec!=none]/best[height<=480][ext=mp4]/best[height<=480]",
+    "720":  "best[height<=720][ext=mp4][vcodec!=none][acodec!=none]/best[height<=720][ext=mp4]/best[height<=720]",
+    "1080": "best[height<=1080][ext=mp4][vcodec!=none][acodec!=none]/best[height<=1080][ext=mp4]/best[height<=1080]",
+    "best": "best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best",
 }
 QUALITY_LABELS = {"360": "360p", "480": "480p", "720": "720p HD", "1080": "1080p FHD", "best": "Макс."}
 
@@ -440,7 +440,14 @@ def history_keyboard(history: list) -> InlineKeyboardMarkup:
 
 # ─── Утилиты ffmpeg ───────────────────────────────────────────────────────────
 
+def ffmpeg_available() -> bool:
+    import shutil
+    return shutil.which("ffmpeg") is not None
+
 def ffmpeg_run(cmd: list) -> bool:
+    if not ffmpeg_available():
+        logger.warning("ffmpeg недоступен, пропускаем обработку")
+        return False
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
         logger.error(f"ffmpeg error: {result.stderr.decode()}")
@@ -520,7 +527,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
     ydl_opts = {
         "outtmpl": str(output_path / "%(id)s.%(ext)s"),
         "format": format_with_fallback,
-        "merge_output_format": "mp4" if fmt != "audio" else None,
+        # merge_output_format убран — используем форматы без слияния (не нужен ffmpeg)
         "quiet": True,
         "no_warnings": True,
         "progress_hooks": [progress_hook],
@@ -637,6 +644,9 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag) 
 async def _add_subtitles(url: str, video_path: Path, platform: str) -> tuple[Path, str | None]:
     if platform == "TikTok":
         return video_path, "⚠️ TikTok не поддерживает субтитры"
+
+    if not ffmpeg_available():
+        return video_path, "⚠️ Субтитры недоступны — ffmpeg не установлен на сервере"
 
     output_path = video_path.with_stem(video_path.stem + "_sub")
     ydl_opts = {
