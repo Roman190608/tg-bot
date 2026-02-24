@@ -2251,7 +2251,6 @@ def main() -> None:
     app.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
-        error_callback=lambda err: logger.warning(f"Polling error: {err}"),
     )
 
 
