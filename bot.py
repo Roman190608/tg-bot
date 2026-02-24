@@ -347,23 +347,53 @@ def load_history_from_db(user_id: int) -> list:
 
 # ─── Клавиатуры ──────────────────────────────────────────────────────────────
 
-def main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
+MENU_LABELS = {
+    "ru": {
+        "download":  "⬇️ Скачать видео",
+        "history":   "🕘 История",
+        "me":        "📊 Моя статистика",
+        "patchnote": "📋 Патч-ноут",
+        "help":      "❓ Помощь",
+        "lang":      "🌍 Язык",
+        "share":     "📤 Поделиться",
+        "stats":     "📊 Стат. бота",
+        "blocks":    "🚫 Блокировки",
+        "sendpatch": "📢 Разослать патч-ноут",
+        "share_text": f"Скачиваю видео из TikTok, YouTube и не только! @{BOT_USERNAME}",
+    },
+    "en": {
+        "download":  "⬇️ Download video",
+        "history":   "🕘 History",
+        "me":        "📊 My stats",
+        "patchnote": "📋 Patch notes",
+        "help":      "❓ Help",
+        "lang":      "🌍 Language",
+        "share":     "📤 Share bot",
+        "stats":     "📊 Bot stats",
+        "blocks":    "🚫 Blocks",
+        "sendpatch": "📢 Send patch note",
+        "share_text": f"Download videos from TikTok, YouTube and more! @{BOT_USERNAME}",
+    },
+}
+
+def main_menu_keyboard(is_admin: bool = False, lang: str = "ru") -> InlineKeyboardMarkup:
+    L = MENU_LABELS.get(lang, MENU_LABELS["ru"])
     rows = [
-        [InlineKeyboardButton("⬇️ Скачать видео",    callback_data="menu_download"),
-         InlineKeyboardButton("🕘 История",           callback_data="menu_history")],
-        [InlineKeyboardButton("📊 Моя статистика",   callback_data="menu_me"),
-         InlineKeyboardButton("📋 Патч-ноут",        callback_data="menu_patchnote")],
-        [InlineKeyboardButton("❓ Помощь",            callback_data="menu_help"),
-         InlineKeyboardButton("🌍 Язык",             callback_data="menu_lang")],
-        [InlineKeyboardButton("📤 Поделиться",       switch_inline_query=f"Скачиваю видео из TikTok, YouTube и не только! @{BOT_USERNAME}")],
+        [InlineKeyboardButton(L["download"],  callback_data="menu_download"),
+         InlineKeyboardButton(L["history"],   callback_data="menu_history")],
+        [InlineKeyboardButton(L["me"],        callback_data="menu_me"),
+         InlineKeyboardButton(L["patchnote"], callback_data="menu_patchnote")],
+        [InlineKeyboardButton(L["help"],      callback_data="menu_help"),
+         InlineKeyboardButton(L["lang"],      callback_data="menu_lang")],
+        [InlineKeyboardButton(L["share"],     switch_inline_query=L["share_text"])],
     ]
     if is_admin:
         rows.append([
-            InlineKeyboardButton("📊 Стат. бота",    callback_data="menu_stats"),
-            InlineKeyboardButton("🚫 Блокировки",    callback_data="menu_blocks"),
+            InlineKeyboardButton(L["stats"],  callback_data="menu_stats"),
+            InlineKeyboardButton(L["blocks"], callback_data="menu_blocks"),
         ])
         rows.append([
-            InlineKeyboardButton("📢 Разослать патч-ноут", callback_data="menu_sendpatch"),
+            InlineKeyboardButton(L["sendpatch"], callback_data="menu_sendpatch"),
         ])
     return InlineKeyboardMarkup(rows)
 
@@ -517,8 +547,11 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
     format_str = QUALITY_OPTIONS.get(quality, QUALITY_OPTIONS["best"])
     if fmt == "audio":
         format_str = "bestaudio/best"
+    elif fmt == "gif":
+        # Для GIF берём уже готовый файл без мержа — TikTok часто не даёт отдельные треки
+        format_str = "best[ext=mp4]/best[ext=webm]/best"
 
-    format_with_fallback = format_str + "/best/bestvideo+bestaudio"
+    format_with_fallback = format_str + "/best"
     last_update = {"pct": -1}
     loop = asyncio.get_event_loop()
 
@@ -735,7 +768,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         ACTIVE_USERS[user.id] = get_lang(context)
         await update.message.reply_text(
             "🎛 Главное меню\n\nВыбери что хочешь сделать:",
-            reply_markup=main_menu_keyboard(user.id == ADMIN_ID)
+            reply_markup=main_menu_keyboard(user.id == ADMIN_ID, get_lang(context))
         )
         return
 
@@ -833,12 +866,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_photo(
             photo=photo_url,
             caption=t(context, "start_caption"),
-            reply_markup=main_menu_keyboard(is_admin)
+            reply_markup=main_menu_keyboard(is_admin, get_lang(context))
         )
     except Exception:
         await update.message.reply_text(
             t(context, "start_caption"),
-            reply_markup=main_menu_keyboard(is_admin)
+            reply_markup=main_menu_keyboard(is_admin, get_lang(context))
         )
 
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -846,7 +879,7 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     ACTIVE_USERS[user.id] = get_lang(context)
     await update.message.reply_text(
         t(context, "menu_title"),
-        reply_markup=main_menu_keyboard(user.id == ADMIN_ID)
+        reply_markup=main_menu_keyboard(user.id == ADMIN_ID, get_lang(context))
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -998,18 +1031,26 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if action == "back":
         try:
-            await safe_edit(query, t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
+            await safe_edit(query, t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin, get_lang(context)))
         except Exception:
-            await query.edit_message_caption(caption=t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
+            await query.edit_message_caption(caption=t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin, get_lang(context)))
 
     elif action == "download":
         await safe_edit(query, "🔗 Отправь мне ссылку на видео из TikTok, YouTube, Twitter, VK и других платформ.")
 
     elif action == "history":
-        if "history_loaded" not in context.user_data:
-            context.user_data["history"] = load_history_from_db(user.id)
-            context.user_data["history_loaded"] = True
-        history = context.user_data.get("history", [])
+        # Всегда подгружаем из db + добавляем текущую сессию
+        db_history = load_history_from_db(user.id)
+        session_history = context.user_data.get("history", [])
+        # Мержим: сессионные записи приоритетнее, убираем дубли по url
+        seen = set()
+        merged = []
+        for item in session_history + db_history:
+            if item.get("url") not in seen:
+                seen.add(item.get("url"))
+                merged.append(item)
+        history = merged[:10]
+        context.user_data["history"] = history
         if not history:
             await safe_edit(query, t(context, "history_empty"), reply_markup=back_keyboard())
         else:
@@ -1130,9 +1171,9 @@ async def handle_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     save_data(data)
     is_admin = query.from_user.id == ADMIN_ID
     try:
-        await safe_edit(query, t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
+        await safe_edit(query, t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin, get_lang(context)))
     except Exception:
-        await query.edit_message_caption(caption=t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin))
+        await query.edit_message_caption(caption=t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin, get_lang(context)))
 
 async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
