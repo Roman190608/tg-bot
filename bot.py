@@ -715,6 +715,12 @@ async def download_thumbnail(url: str, output_path: Path) -> Path | None:
         "outtmpl": str(output_path / "thumb_%(id)s"),
         "quiet": True,
         "no_warnings": True,
+        "http_headers": {"User-Agent": "com.google.ios.youtube/19.29.1 CFNetwork/1568.100.1 Darwin/24.0.0"},
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "android", "web"],
+            }
+        },
     }
     loop = asyncio.get_event_loop()
 
@@ -778,9 +784,14 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
         "quiet": True,
         "no_warnings": True,
         "progress_hooks": [progress_hook],
-        "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+        "http_headers": {"User-Agent": "com.google.ios.youtube/19.29.1 CFNetwork/1568.100.1 Darwin/24.0.0"},
         "cookiefile": "cookies.txt" if Path("cookies.txt").exists() else None,
         "socket_timeout": 30,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "android", "web"],
+            }
+        },
     }
 
     if fmt == "audio":
@@ -864,6 +875,13 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag, 
         "progress_hooks": [progress_hook],
         "noplaylist": False,
         "playlistend": 20,
+        "http_headers": {"User-Agent": "com.google.ios.youtube/19.29.1 CFNetwork/1568.100.1 Darwin/24.0.0"},
+        "cookiefile": "cookies.txt" if Path("cookies.txt").exists() else None,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "android", "web"],
+            }
+        },
     }
 
     def _download():
@@ -901,6 +919,12 @@ async def _add_subtitles(url: str, video_path: Path, platform: str) -> tuple[Pat
         "quiet": True,
         "no_warnings": True,
         "cookiefile": "cookies.txt" if Path("cookies.txt").exists() else None,
+        "http_headers": {"User-Agent": "com.google.ios.youtube/19.29.1 CFNetwork/1568.100.1 Darwin/24.0.0"},
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "android", "web"],
+            }
+        },
     }
     loop = asyncio.get_event_loop()
 
