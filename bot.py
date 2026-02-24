@@ -180,11 +180,10 @@ TEXTS = {
         "cancel_btn": "❌ Отменить",
         "back_btn": "◀️ Назад",
         "downloading": "⏳ Скачиваю...",
-        "trim_enter_start": t(context, "trim_enter_start"),
-        "trim_enter_end": t(context, "trim_enter_end"),
+        "trim_enter_start": "✂️ Введи время начала обрезки (М:СС)\nНапример: 0:15 или 1:30",
+        "trim_enter_end": "Теперь введи время конца:",
         "trim_start_ok": "✅ Начало: {start}\n\n",
-        "trim_invalid": t(context, "trim_invalid"),
-        "queued": "⏳ Ты в очереди ({pos}). Подожди...",
+        "trim_invalid": "❌ Неверный формат. Например: 0:15 или 1:30:00",
         "me": (
             "👤 Твоя статистика:\n\n"
             "📥 Всего скачиваний: {total}\n"
