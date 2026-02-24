@@ -2213,9 +2213,28 @@ def main() -> None:
         )
         await task_redis_queue()
 
-    app.post_init = _start_background
-
     logger.info(f"Бот v{BOT_VERSION} запущен...")
+
+    # Удаляем вебхук и ждём — на случай если старый инстанс ещё не умер
+    import time
+    async def _pre_init(app):
+        # 1. Удаляем вебхук и ждём — на случай если старый инстанс ещё не умер
+        try:
+            await app.bot.delete_webhook(drop_pending_updates=True)
+            logger.info("Webhook удалён, жду 3 сек перед polling...")
+        except Exception as e:
+            logger.warning(f"delete_webhook: {e}")
+        await asyncio.sleep(3)
+        # 2. Запускаем фоновые задачи
+        app.job_queue.run_repeating(
+            callback=lambda ctx: asyncio.ensure_future(task_ytdlp_update_once(ctx)),
+            interval=7 * 24 * 3600,
+            first=7 * 24 * 3600,
+            name="ytdlp_update"
+        )
+        await task_redis_queue()
+
+    app.post_init = _pre_init
 
     # Обработчик ошибок — логируем но не крашимся
     async def error_handler(update, context):
