@@ -725,25 +725,30 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
 
     format_with_fallback = format_str + "/best"
     last_update = {"pct": -1}
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def progress_hook(d):
-        if cancel_flag.get("cancelled"):
-            raise Exception("CANCELLED")
-        if d["status"] == "downloading":
-            total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
-            downloaded = d.get("downloaded_bytes", 0)
-            if total > 0:
-                pct = int(downloaded / total * 100)
-                if pct - last_update["pct"] >= 10:
-                    last_update["pct"] = pct
-                    asyncio.run_coroutine_threadsafe(
-                        status_msg.edit_text(
-                            f"⏳ {get_funny_status(pct)}",
-                            reply_markup=cancel_keyboard(lang)
-                        ),
-                        loop
-                    )
+        try:
+            if cancel_flag.get("cancelled"):
+                raise Exception("CANCELLED")
+            if d["status"] == "downloading":
+                total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
+                downloaded = d.get("downloaded_bytes", 0)
+                if total > 0:
+                    pct = int(downloaded / total * 100)
+                    if pct - last_update["pct"] >= 10:
+                        last_update["pct"] = pct
+                        asyncio.run_coroutine_threadsafe(
+                            status_msg.edit_text(
+                                f"⏳ {get_funny_status(pct)}",
+                                reply_markup=cancel_keyboard(lang)
+                            ),
+                            loop
+                        )
+        except Exception as hook_err:
+            if "CANCELLED" in str(hook_err):
+                raise  # пробрасываем отмену
+            logger.warning(f"progress_hook error (ignored): {hook_err}")
 
     ydl_opts = {
         "outtmpl": str(output_path / "%(id)s.%(ext)s"),
@@ -809,20 +814,25 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag, 
     playlist_dir = output_path / "playlist_tmp"
     playlist_dir.mkdir(exist_ok=True)
     count = {"n": 0}
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def progress_hook(d):
-        if cancel_flag.get("cancelled"):
-            raise Exception("CANCELLED")
-        if d["status"] == "finished":
-            count["n"] += 1
-            asyncio.run_coroutine_threadsafe(
-                status_msg.edit_text(
-                    f"⏳ Скачиваю плейлист...\nСкачано видео: {count['n']}",
-                    reply_markup=cancel_keyboard(lang)
-                ),
-                loop
-            )
+        try:
+            if cancel_flag.get("cancelled"):
+                raise Exception("CANCELLED")
+            if d["status"] == "finished":
+                count["n"] += 1
+                asyncio.run_coroutine_threadsafe(
+                    status_msg.edit_text(
+                        f"⏳ Скачиваю плейлист...\nСкачано видео: {count['n']}",
+                        reply_markup=cancel_keyboard(lang)
+                    ),
+                    loop
+                )
+        except Exception as hook_err:
+            if "CANCELLED" in str(hook_err):
+                raise
+            logger.warning(f"playlist progress_hook error (ignored): {hook_err}")
 
     ydl_opts = {
         "outtmpl": str(playlist_dir / "%(playlist_index)s_%(title)s.%(ext)s"),
