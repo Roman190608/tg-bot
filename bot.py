@@ -148,6 +148,43 @@ TEXTS = {
         "unsupported": "❌ Платформа не поддерживается.\nПоддерживаются: TikTok, YouTube, Twitter, VK, Twitch, Reddit.",
         "step1": "📦 Шаг 1 — выбери формат:",
         "remaining": "Осталось сегодня: {remaining}",
+        "fmt_video": "🎬 Видео (MP4)",
+        "fmt_audio": "🎵 Аудио (MP3)",
+        "fmt_gif":   "🌀 GIF",
+        "fmt_circle":"⭕ Кружочек",
+        "fmt_thumb": "🖼 Обложка",
+        "fmt_playlist":"📋 Плейлист (ZIP)",
+        "step_quality": "📐 Шаг 2 — качество:",
+        "step_audio":   "🔊 Шаг 3 — уровень звука:",
+        "step_orient":  "📐 Шаг 4 — ориентация, субтитры, скорость:",
+        "step_speed":   "⚡ Выбери скорость воспроизведения:",
+        "step_trim":    "✂️ Хочешь обрезать?",
+        "step_trim_gif":"✂️ Хочешь обрезать? (макс. 60 сек)",
+        "trim_yes": "✂️ Обрезать видео",
+        "trim_no":  "⏭ Без обрезки",
+        "orient_original":  "📱 Оригинал",
+        "orient_square":    "⬛ Квадрат (1:1)",
+        "orient_landscape": "🖼 Горизонталь (16:9)",
+        "subs_on":   "📝 Субтитры: ВКЛ ✅",
+        "subs_off":  "📝 Субтитры: ВЫКЛ ❌",
+        "speed_btn": "⚡ Скорость: {speed}x",
+        "trim_btn":  "✂️ Обрезать видео",
+        "download_btn": "⬇️ Скачать сейчас",
+        "audio_mute":   "🔇 Без звука",
+        "audio_quiet":  "🔉 Тише",
+        "audio_normal": "🔊 Обычный",
+        "audio_loud":   "📢 Громче",
+        "q360": "360p", "q480": "480p", "q720": "720p HD", "q1080": "1080p FHD", "qbest": "🏆 Максимальное",
+        "speed_half": "🐢 0.5x", "speed_075": "🐌 0.75x", "speed_1": "▶️ 1x",
+        "speed_15": "🐇 1.5x", "speed_2": "⚡ 2x",
+        "cancel_btn": "❌ Отменить",
+        "back_btn": "◀️ Назад",
+        "downloading": "⏳ Скачиваю...",
+        "trim_enter_start": t(context, "trim_enter_start"),
+        "trim_enter_end": t(context, "trim_enter_end"),
+        "trim_start_ok": "✅ Начало: {start}\n\n",
+        "trim_invalid": t(context, "trim_invalid"),
+        "queued": "⏳ Ты в очереди ({pos}). Подожди...",
         "me": (
             "👤 Твоя статистика:\n\n"
             "📥 Всего скачиваний: {total}\n"
@@ -184,6 +221,43 @@ TEXTS = {
         "unsupported": "❌ Platform not supported.\nSupported: TikTok, YouTube, Twitter, VK, Twitch, Reddit.",
         "step1": "📦 Step 1 — choose format:",
         "remaining": "Downloads left today: {remaining}",
+        "fmt_video": "🎬 Video (MP4)",
+        "fmt_audio": "🎵 Audio (MP3)",
+        "fmt_gif":   "🌀 GIF",
+        "fmt_circle":"⭕ Circle",
+        "fmt_thumb": "🖼 Thumbnail",
+        "fmt_playlist":"📋 Playlist (ZIP)",
+        "step_quality": "📐 Step 2 — quality:",
+        "step_audio":   "🔊 Step 3 — audio level:",
+        "step_orient":  "📐 Step 4 — orientation, subtitles, speed:",
+        "step_speed":   "⚡ Choose playback speed:",
+        "step_trim":    "✂️ Do you want to trim?",
+        "step_trim_gif":"✂️ Do you want to trim? (max 60 sec)",
+        "trim_yes": "✂️ Trim video",
+        "trim_no":  "⏭ No trim",
+        "orient_original":  "📱 Original",
+        "orient_square":    "⬛ Square (1:1)",
+        "orient_landscape": "🖼 Landscape (16:9)",
+        "subs_on":   "📝 Subtitles: ON ✅",
+        "subs_off":  "📝 Subtitles: OFF ❌",
+        "speed_btn": "⚡ Speed: {speed}x",
+        "trim_btn":  "✂️ Trim video",
+        "download_btn": "⬇️ Download now",
+        "audio_mute":   "🔇 Mute",
+        "audio_quiet":  "🔉 Quiet",
+        "audio_normal": "🔊 Normal",
+        "audio_loud":   "📢 Loud",
+        "q360": "360p", "q480": "480p", "q720": "720p HD", "q1080": "1080p FHD", "qbest": "🏆 Maximum",
+        "speed_half": "🐢 0.5x", "speed_075": "🐌 0.75x", "speed_1": "▶️ 1x",
+        "speed_15": "🐇 1.5x", "speed_2": "⚡ 2x",
+        "cancel_btn": "❌ Cancel",
+        "back_btn": "◀️ Back",
+        "downloading": "⏳ Downloading...",
+        "trim_enter_start": "✂️ Enter start time (M:SS)\nExample: 0:15 or 1:30",
+        "trim_enter_end": "Now enter end time:",
+        "trim_start_ok": "✅ Start: {start}\n\n",
+        "trim_invalid": "❌ Invalid format. Example: 0:15 or 1:30:00",
+        "queued": "⏳ You are in queue ({pos}). Please wait...",
         "me": (
             "👤 Your statistics:\n\n"
             "📥 Total downloads: {total}\n"
@@ -427,8 +501,9 @@ def persistent_menu_keyboard() -> ReplyKeyboardMarkup:
         is_persistent=True
     )
 
-def back_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="menu_back")]])
+def back_keyboard(lang="ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
+    return InlineKeyboardMarkup([[InlineKeyboardButton(T["back_btn"], callback_data="menu_back")]])
 
 def lang_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -444,63 +519,70 @@ def admin_blocks_keyboard(blocked: list) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton("◀️ Назад", callback_data="menu_back")])
     return InlineKeyboardMarkup(rows)
 
-def format_keyboard() -> InlineKeyboardMarkup:
+def format_keyboard(lang="ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎬 Видео (MP4)",        callback_data="fmt_video"),
-         InlineKeyboardButton("🎵 Аудио (MP3)",        callback_data="fmt_audio")],
-        [InlineKeyboardButton("🌀 GIF",                callback_data="fmt_gif"),
-         InlineKeyboardButton("⭕ Кружочек",           callback_data="fmt_circle")],
-        [InlineKeyboardButton("🖼 Обложка",            callback_data="fmt_thumb"),
-         InlineKeyboardButton("📋 Плейлист (ZIP)",     callback_data="fmt_playlist")],
+        [InlineKeyboardButton(T["fmt_video"],    callback_data="fmt_video"),
+         InlineKeyboardButton(T["fmt_audio"],    callback_data="fmt_audio")],
+        [InlineKeyboardButton(T["fmt_gif"],      callback_data="fmt_gif"),
+         InlineKeyboardButton(T["fmt_circle"],   callback_data="fmt_circle")],
+        [InlineKeyboardButton(T["fmt_thumb"],    callback_data="fmt_thumb"),
+         InlineKeyboardButton(T["fmt_playlist"], callback_data="fmt_playlist")],
     ])
 
-def quality_keyboard() -> InlineKeyboardMarkup:
+def quality_keyboard(lang="ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("360p",            callback_data="quality_360"),
-         InlineKeyboardButton("480p",            callback_data="quality_480")],
-        [InlineKeyboardButton("720p HD",         callback_data="quality_720"),
-         InlineKeyboardButton("1080p FHD",       callback_data="quality_1080")],
-        [InlineKeyboardButton("🏆 Максимальное", callback_data="quality_best")],
+        [InlineKeyboardButton(T["q360"],  callback_data="quality_360"),
+         InlineKeyboardButton(T["q480"],  callback_data="quality_480")],
+        [InlineKeyboardButton(T["q720"],  callback_data="quality_720"),
+         InlineKeyboardButton(T["q1080"], callback_data="quality_1080")],
+        [InlineKeyboardButton(T["qbest"], callback_data="quality_best")],
     ])
 
-def audio_keyboard() -> InlineKeyboardMarkup:
+def audio_keyboard(lang="ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔇 Без звука", callback_data="audio_mute"),
-         InlineKeyboardButton("🔉 Тише",      callback_data="audio_quiet")],
-        [InlineKeyboardButton("🔊 Обычный",   callback_data="audio_normal"),
-         InlineKeyboardButton("📢 Громче",    callback_data="audio_loud")],
+        [InlineKeyboardButton(T["audio_mute"],   callback_data="audio_mute"),
+         InlineKeyboardButton(T["audio_quiet"],  callback_data="audio_quiet")],
+        [InlineKeyboardButton(T["audio_normal"], callback_data="audio_normal"),
+         InlineKeyboardButton(T["audio_loud"],   callback_data="audio_loud")],
     ])
 
-def speed_keyboard() -> InlineKeyboardMarkup:
+def speed_keyboard(lang="ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🐢 0.5x",  callback_data="speed_0.5"),
-         InlineKeyboardButton("🐌 0.75x", callback_data="speed_0.75")],
-        [InlineKeyboardButton("▶️ 1x",    callback_data="speed_1.0"),
-         InlineKeyboardButton("🐇 1.5x",  callback_data="speed_1.5")],
-        [InlineKeyboardButton("⚡ 2x",    callback_data="speed_2.0")],
+        [InlineKeyboardButton(T["speed_half"], callback_data="speed_0.5"),
+         InlineKeyboardButton(T["speed_075"],  callback_data="speed_0.75")],
+        [InlineKeyboardButton(T["speed_1"],    callback_data="speed_1.0"),
+         InlineKeyboardButton(T["speed_15"],   callback_data="speed_1.5")],
+        [InlineKeyboardButton(T["speed_2"],    callback_data="speed_2.0")],
     ])
 
-def orientation_keyboard(subs_on: bool = False, speed: str = "1.0") -> InlineKeyboardMarkup:
-    subs_label  = "📝 Субтитры: ВКЛ ✅" if subs_on else "📝 Субтитры: ВЫКЛ ❌"
-    speed_label = f"⚡ Скорость: {speed}x"
+def orientation_keyboard(subs_on: bool = False, speed: str = "1.0", lang: str = "ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
+    subs_label  = T["subs_on"] if subs_on else T["subs_off"]
+    speed_label = T["speed_btn"].format(speed=speed)
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📱 Оригинал",           callback_data="orient_original"),
-         InlineKeyboardButton("⬛ Квадрат (1:1)",      callback_data="orient_square")],
-        [InlineKeyboardButton("🖼 Горизонталь (16:9)", callback_data="orient_landscape")],
-        [InlineKeyboardButton(subs_label,              callback_data="orient_toggle_subs"),
-         InlineKeyboardButton(speed_label,             callback_data="orient_speed")],
-        [InlineKeyboardButton("✂️ Обрезать видео",     callback_data="orient_trim")],
-        [InlineKeyboardButton("⬇️ Скачать сейчас",    callback_data="orient_download")],
+        [InlineKeyboardButton(T["orient_original"],  callback_data="orient_original"),
+         InlineKeyboardButton(T["orient_square"],    callback_data="orient_square")],
+        [InlineKeyboardButton(T["orient_landscape"], callback_data="orient_landscape")],
+        [InlineKeyboardButton(subs_label,            callback_data="orient_toggle_subs"),
+         InlineKeyboardButton(speed_label,           callback_data="orient_speed")],
+        [InlineKeyboardButton(T["trim_btn"],         callback_data="orient_trim")],
+        [InlineKeyboardButton(T["download_btn"],     callback_data="orient_download")],
     ])
 
-def trim_keyboard() -> InlineKeyboardMarkup:
+def trim_keyboard(lang="ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✂️ Обрезать видео", callback_data="trim_yes"),
-         InlineKeyboardButton("⏭ Без обрезки",    callback_data="trim_no")],
+        [InlineKeyboardButton(T["trim_yes"], callback_data="trim_yes"),
+         InlineKeyboardButton(T["trim_no"],  callback_data="trim_no")],
     ])
 
-def cancel_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Отменить", callback_data="cancel_download")]])
+def cancel_keyboard(lang="ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
+    return InlineKeyboardMarkup([[InlineKeyboardButton(T["cancel_btn"], callback_data="cancel_download")]])
 
 def history_keyboard(history: list) -> InlineKeyboardMarkup:
     buttons = []
@@ -657,7 +739,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
                     asyncio.run_coroutine_threadsafe(
                         status_msg.edit_text(
                             f"⏳ {get_funny_status(pct)}",
-                            reply_markup=cancel_keyboard()
+                            reply_markup=cancel_keyboard(get_lang(context))
                         ),
                         loop
                     )
@@ -705,7 +787,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
                 asyncio.run_coroutine_threadsafe(
                     status_msg.edit_text(
                         f"⏳ 🔄 Попытка {attempt + 1}/3, ждём {delay} сек...",
-                        reply_markup=cancel_keyboard()
+                        reply_markup=cancel_keyboard(get_lang(context))
                     ),
                     loop
                 )
@@ -736,7 +818,7 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag) 
             asyncio.run_coroutine_threadsafe(
                 status_msg.edit_text(
                     f"⏳ Скачиваю плейлист...\nСкачано видео: {count['n']}",
-                    reply_markup=cancel_keyboard()
+                    reply_markup=cancel_keyboard(get_lang(context))
                 ),
                 loop
             )
@@ -1054,7 +1136,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if context.user_data.get("waiting_trim"):
         if context.user_data.get("trim_start") is None:
             if not time_str_valid(text):
-                await update.message.reply_text("❌ Неверный формат. Например: 0:15 или 1:30:00")
+                await update.message.reply_text(t(context, "trim_invalid"))
                 return
             context.user_data["trim_start"] = text
             await update.message.reply_text(f"✅ Начало: {text}\n\nТеперь введи время конца:")
@@ -1067,7 +1149,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             fmt = context.user_data.get("format", "video")
             if fmt == "gif":
                 status_msg = await update.message.reply_text(
-                    f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard()
+                    f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context))
                 )
                 await _run_download(user, status_msg, context)
             else:
@@ -1080,7 +1162,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 trim_e = context.user_data.get("trim_end", "")
                 await update.message.reply_text(
                     f"🎬 {platform} • {ql} • {al}\n✂️ Обрезка: {trim_s} → {trim_e}\n\nВыбери ориентацию:",
-                    reply_markup=orientation_keyboard(subs_on, speed)
+                    reply_markup=orientation_keyboard(subs_on, speed, get_lang(context))
                 )
         return
 
@@ -1157,7 +1239,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"🎬 Видео с {platform}\n"
         f"{t(context, 'remaining', remaining=remaining)}\n\n"
         f"{t(context, 'step1')}",
-        reply_markup=format_keyboard()
+        reply_markup=format_keyboard(get_lang(context))
     )
 
 # ─── Callback: меню ───────────────────────────────────────────────────────────
@@ -1180,7 +1262,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             await safe_edit(query, t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin, lang))
 
     elif action == "download":
-        await safe_edit(query, "🔗 Отправь мне ссылку на видео!\n\nПоддерживаются: TikTok, YouTube, Twitter, VK, Twitch, Reddit")
+        await safe_edit(query, t(context, "no_url"))
 
     elif action == "history":
         db_history = load_history_from_db(user.id)
@@ -1193,7 +1275,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         history = merged[:HISTORY_SIZE]
         context.user_data["history"] = history
         if not history:
-            await safe_edit(query, t(context, "history_empty"), reply_markup=back_keyboard())
+            await safe_edit(query, t(context, "history_empty"), reply_markup=back_keyboard(get_lang(context)))
         else:
             kb = InlineKeyboardMarkup(
                 history_keyboard(history).inline_keyboard +
@@ -1212,7 +1294,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             fav = max(user_platforms.items(), key=lambda x: x[1])[0] if user_platforms else "—"
             today_count = data.get("downloads_today", {}).get(uid, 0)
             text = t(context, "me", total=user_total, fav=fav, today=today_count, limit=DAILY_LIMIT)
-        await safe_edit(query, text, reply_markup=back_keyboard())
+        await safe_edit(query, text, reply_markup=back_keyboard(get_lang(context)))
 
     elif action == "patchnote":
         version = BOT_VERSION
@@ -1221,7 +1303,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await safe_edit(query, text, reply_markup=patchnote_keyboard(version))
 
     elif action == "help":
-        await safe_edit(query, t(context, "help"), reply_markup=back_keyboard())
+        await safe_edit(query, t(context, "help"), reply_markup=back_keyboard(get_lang(context)))
 
     elif action == "lang":
         await safe_edit(query, "🌍 Выбери язык / Choose language:", reply_markup=lang_menu_keyboard())
@@ -1240,24 +1322,24 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             f"Заблокировано: {len(data.get('blocked', []))}\n"
             f"Активных в сессии: {len(ACTIVE_USERS)}\n\n"
             f"Топ платформы:\n{top_str}",
-            reply_markup=back_keyboard()
+            reply_markup=back_keyboard(get_lang(context))
         )
 
     elif action == "blocks" and is_admin:
         data = get_data()
         blocked = data.get("blocked", [])
         if not blocked:
-            await safe_edit(query, "✅ Заблокированных нет.", reply_markup=back_keyboard())
+            await safe_edit(query, "✅ Заблокированных нет.", reply_markup=back_keyboard(get_lang(context)))
         else:
             await safe_edit(query, f"🚫 Заблокировано: {len(blocked)}", reply_markup=admin_blocks_keyboard(blocked))
 
     elif action == "sendpatch" and is_admin:
         notes = PATCH_NOTES.get(BOT_VERSION)
         if not notes:
-            await safe_edit(query, f"❌ Нет патч-нота для v{BOT_VERSION}.", reply_markup=back_keyboard())
+            await safe_edit(query, f"❌ Нет патч-нота для v{BOT_VERSION}.", reply_markup=back_keyboard(get_lang(context)))
             return
         if not ACTIVE_USERS:
-            await safe_edit(query, "📭 Нет активных пользователей в этой сессии.", reply_markup=back_keyboard())
+            await safe_edit(query, "📭 Нет активных пользователей в этой сессии.", reply_markup=back_keyboard(get_lang(context)))
             return
         await safe_edit(query, f"📤 Рассылаю для {len(ACTIVE_USERS)} пользователей...")
         sent, failed = 0, 0
@@ -1274,7 +1356,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await safe_edit(
             query,
             f"✅ Патч-ноут v{BOT_VERSION} разослан!\n📨 Отправлено: {sent}\n❌ Не доставлено: {failed}",
-            reply_markup=back_keyboard()
+            reply_markup=back_keyboard(get_lang(context))
         )
 
     elif action == "block_input" and is_admin:
@@ -1312,7 +1394,7 @@ async def handle_adm_unblock_callback(update: Update, context: ContextTypes.DEFA
     if uid in blocked:
         blocked.remove(uid)
         save_data(data)
-    await safe_edit(query, f"✅ {uid} разблокирован.", reply_markup=back_keyboard())
+    await safe_edit(query, f"✅ {uid} разблокирован.", reply_markup=back_keyboard(get_lang(context)))
 
 # ─── Callback: язык ───────────────────────────────────────────────────────────
 
@@ -1366,8 +1448,8 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
     context.user_data["speed"] = "1.0"
     await safe_edit(
         query,
-        f"🎬 Повтор: {item['platform']}\nОсталось сегодня: {remaining}\n\n📦 Выбери формат:",
-        reply_markup=format_keyboard()
+        f"🎬 {item['platform']}\n{t(context, 'remaining', remaining=remaining)}\n\n{t(context, 'step1')}",
+        reply_markup=format_keyboard(get_lang(context))
     )
 
 # ─── Callback: формат ─────────────────────────────────────────────────────────
@@ -1381,32 +1463,32 @@ async def handle_format_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     if fmt == "audio":
         context.user_data["quality"] = "best"
-        await safe_edit(query, f"🎵 {platform} • MP3\n\n🔊 Шаг 2 — уровень звука:", reply_markup=audio_keyboard())
+        await safe_edit(query, f"🎵 {platform} • MP3\n\n{t(context, 'step_audio')}", reply_markup=audio_keyboard(get_lang(context)))
 
     elif fmt == "gif":
         context.user_data["quality"] = "480"
         context.user_data["audio"] = "mute"
         context.user_data["orientation"] = "original"
-        await safe_edit(query, f"🌀 {platform} • GIF\n\n✂️ Хочешь обрезать?", reply_markup=trim_keyboard())
+        await safe_edit(query, f"🌀 {platform} • GIF\n\n{t(context, 'step_trim')}", reply_markup=trim_keyboard(get_lang(context)))
 
     elif fmt == "circle":
         context.user_data["quality"] = "480"
         context.user_data["audio"] = "normal"
         context.user_data["orientation"] = "original"
-        await safe_edit(query, f"⭕ {platform} • Кружочек\n\n✂️ Хочешь обрезать? (макс. 60 сек)", reply_markup=trim_keyboard())
+        await safe_edit(query, f"⭕ {platform} • {t(context, 'fmt_circle')}\n\n{t(context, 'step_trim_gif')}", reply_markup=trim_keyboard(get_lang(context)))
 
     elif fmt == "thumb":
         # Обложка — сразу скачиваем
-        await safe_edit(query, f"⏳ Скачиваю обложку...", reply_markup=cancel_keyboard())
+        await safe_edit(query, f"⏳ Скачиваю обложку...", reply_markup=cancel_keyboard(get_lang(context)))
         await _run_download(query.from_user, query.message, context)
 
     elif fmt == "playlist":
         context.user_data["audio"] = "normal"
         context.user_data["orientation"] = "original"
-        await safe_edit(query, f"📋 {platform} • Плейлист\n\n📐 Шаг 2 — качество:", reply_markup=quality_keyboard())
+        await safe_edit(query, f"📋 {platform} • {t(context, 'fmt_playlist')}\n\n{t(context, 'step_quality')}", reply_markup=quality_keyboard(get_lang(context)))
 
     else:  # video
-        await safe_edit(query, f"🎬 {platform} • Видео\n\n📐 Шаг 2 — качество:", reply_markup=quality_keyboard())
+        await safe_edit(query, f"🎬 {platform} • {t(context, 'fmt_video')}\n\n{t(context, 'step_quality')}", reply_markup=quality_keyboard(get_lang(context)))
 
 # ─── Callback: качество ───────────────────────────────────────────────────────
 
@@ -1420,11 +1502,11 @@ async def handle_quality_callback(update: Update, context: ContextTypes.DEFAULT_
     ql = QUALITY_LABELS.get(quality, quality)
 
     if fmt == "playlist":
-        await safe_edit(query, f"⏳ Скачиваю плейлист...\nСкачано видео: 0", reply_markup=cancel_keyboard())
+        await safe_edit(query, f"⏳ Скачиваю плейлист...\nСкачано видео: 0", reply_markup=cancel_keyboard(get_lang(context)))
         await _run_download(query.from_user, query.message, context)
         return
 
-    await safe_edit(query, f"🎬 {platform} • {ql}\n\n🔊 Шаг 3 — уровень звука:", reply_markup=audio_keyboard())
+    await safe_edit(query, f"🎬 {platform} • {ql}\n\n{t(context, 'step_audio')}", reply_markup=audio_keyboard(get_lang(context)))
 
 # ─── Callback: аудио ──────────────────────────────────────────────────────────
 
@@ -1440,7 +1522,7 @@ async def handle_audio_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     if fmt == "audio":
         context.user_data["orientation"] = "original"
-        await safe_edit(query, f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
+        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context)))
         await _run_download(query.from_user, query.message, context)
         return
 
@@ -1448,8 +1530,8 @@ async def handle_audio_callback(update: Update, context: ContextTypes.DEFAULT_TY
     subs_on = context.user_data.get("subtitles", False)
     await safe_edit(
         query,
-        f"🎬 {platform} • {ql} • {al}\n\n📐 Шаг 4 — ориентация, субтитры, скорость:",
-        reply_markup=orientation_keyboard(subs_on, speed)
+        f"🎬 {platform} • {ql} • {al}\n\n{t(context, 'step_orient')}",
+        reply_markup=orientation_keyboard(subs_on, speed, get_lang(context))
     )
 
 # ─── Callback: скорость ───────────────────────────────────────────────────────
@@ -1467,7 +1549,7 @@ async def handle_speed_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await safe_edit(
         query,
         f"🎬 {platform} • {ql} • {al}\n⚡ Скорость: {speed_label}\n\nВыбери ориентацию или скачай:",
-        reply_markup=orientation_keyboard(subs_on, speed)
+        reply_markup=orientation_keyboard(subs_on, speed, get_lang(context))
     )
 
 # ─── Callback: ориентация ─────────────────────────────────────────────────────
@@ -1493,34 +1575,34 @@ async def handle_orientation_callback(update: Update, context: ContextTypes.DEFA
         await safe_edit(
             query,
             f"🎬 {platform} • {ql} • {al}{trim_info()}\n\nВыбери ориентацию или скачай:",
-            reply_markup=orientation_keyboard(subs_on, speed)
+            reply_markup=orientation_keyboard(subs_on, speed, get_lang(context))
         )
 
     elif data == "orient_speed":
-        await safe_edit(query, f"⚡ Выбери скорость воспроизведения:", reply_markup=speed_keyboard())
+        await safe_edit(query, t(context, "step_speed"), reply_markup=speed_keyboard(get_lang(context)))
 
     elif data == "orient_trim":
         context.user_data["waiting_trim"] = True
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
-        await safe_edit(query, "✂️ Введи время начала обрезки (М:СС)\nНапример: 0:15 или 1:30")
+        await safe_edit(query, t(context, "trim_enter_start"))
 
     elif data == "orient_download":
         if "orientation" not in context.user_data:
             context.user_data["orientation"] = "original"
-        await safe_edit(query, f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
+        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context)))
         await _run_download(query.from_user, query.message, context)
 
     else:
         orient = data.replace("orient_", "")
         context.user_data["orientation"] = orient
-        orient_labels = {"original": "📱 Оригинал", "square": "⬛ Квадрат", "landscape": "🖼 Горизонталь"}
+        orient_labels = {"original": t(context,"orient_original"), "square": t(context,"orient_square"), "landscape": t(context,"orient_landscape")}
         await safe_edit(
             query,
             f"🎬 {platform} • {ql} • {al}\n"
             f"📐 {orient_labels.get(orient, orient)}{trim_info()}\n\n"
             f"Нажми «Скачать» или измени опции:",
-            reply_markup=orientation_keyboard(subs_on, speed)
+            reply_markup=orientation_keyboard(subs_on, speed, get_lang(context))
         )
 
 # ─── Callback: обрезка ────────────────────────────────────────────────────────
@@ -1533,13 +1615,13 @@ async def handle_trim_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
         context.user_data["subtitles"] = False
-        await safe_edit(query, f"⏳ Скачиваю...\n{make_progress_bar(0)}", reply_markup=cancel_keyboard())
+        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context)))
         await _run_download(query.from_user, query.message, context)
     else:
         context.user_data["waiting_trim"] = True
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
-        await safe_edit(query, "✂️ Введи время начала обрезки (М:СС)\nНапример: 0:15 или 1:30")
+        await safe_edit(query, t(context, "trim_enter_start"))
 
 # ─── Callback: отмена ─────────────────────────────────────────────────────────
 
