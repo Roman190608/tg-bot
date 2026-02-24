@@ -2118,36 +2118,36 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── Фоновые задачи ──────────────────────────────────────────────────────────
 
-async def task_ytdlp_update():
-    """Обновляет yt-dlp раз в неделю автоматически."""
-    while True:
-        await asyncio.sleep(7 * 24 * 3600)  # раз в неделю
-        try:
-            logger.info("🔄 Обновляю yt-dlp...")
-            result = subprocess.run(
+async def task_ytdlp_update_once(context=None):
+    """Обновляет yt-dlp один раз. Вызывается из PTB job_queue."""
+    try:
+        logger.info("🔄 Обновляю yt-dlp...")
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(
                 [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp",
                  "--break-system-packages"],
                 capture_output=True, text=True, timeout=120
             )
-            if result.returncode == 0:
-                # Получаем новую версию
-                ver_result = subprocess.run(
-                    [sys.executable, "-m", "yt_dlp", "--version"],
-                    capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            ver_result = subprocess.run(
+                [sys.executable, "-m", "yt_dlp", "--version"],
+                capture_output=True, text=True
+            )
+            ver = ver_result.stdout.strip()
+            logger.info(f"✅ yt-dlp обновлён до {ver}")
+            try:
+                await app_ref.bot.send_message(
+                    ADMIN_ID,
+                    f"✅ yt-dlp автоматически обновлён до версии {ver}"
                 )
-                ver = ver_result.stdout.strip()
-                logger.info(f"✅ yt-dlp обновлён до {ver}")
-                try:
-                    await app_ref.bot.send_message(
-                        ADMIN_ID,
-                        f"✅ yt-dlp автоматически обновлён до версии {ver}"
-                    )
-                except Exception:
-                    pass
-            else:
-                logger.warning(f"yt-dlp update failed: {result.stderr}")
-        except Exception as e:
-            logger.error(f"Ошибка обновления yt-dlp: {e}")
+            except Exception:
+                pass
+        else:
+            logger.warning(f"yt-dlp update failed: {result.stderr}")
+    except Exception as e:
+        logger.error(f"Ошибка обновления yt-dlp: {e}")
 
 
 async def task_redis_queue():
@@ -2205,9 +2205,15 @@ def main() -> None:
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    # Регистрируем фоновые задачи через job_queue PTB
+    # Регистрируем фоновые задачи через job_queue PTB (корректно завершаются при стопе)
     async def _start_background(app):
-        asyncio.create_task(task_ytdlp_update())
+        # yt-dlp автообновление раз в неделю через PTB job_queue
+        app.job_queue.run_repeating(
+            callback=lambda ctx: asyncio.ensure_future(task_ytdlp_update_once(ctx)),
+            interval=7 * 24 * 3600,
+            first=7 * 24 * 3600,  # первый запуск через неделю
+            name="ytdlp_update"
+        )
         await task_redis_queue()
 
     app.post_init = _start_background
