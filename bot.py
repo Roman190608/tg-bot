@@ -220,6 +220,22 @@ TEXTS = {
         "me_empty": "📭 Ты ещё ничего не скачивал!",
         "menu_title": "🎛 Главное меню:",
         "queued": "⏳ Ты в очереди ({pos}). Подожди...",
+        "settings": "⚙️ Настройки",
+        "settings_title": "⚙️ Настройки профиля",
+        "theme_toggle": "🎨 Тема: {theme}",
+        "theme_light": "☀️ Светлая",
+        "theme_dark":  "🌙 Тёмная",
+        "theme_changed": "🎨 Тема изменена на {theme}",
+        "default_fmt": "📦 Формат по умолчанию: {fmt}",
+        "default_fmt_title": "📦 Выбери формат по умолчанию:",
+        "default_quality": "📐 Качество по умолч.: {q}",
+        "pref_saved": "✅ Настройки сохранены!",
+        "settings_info": (
+            "⚙️ Настройки профиля\n\n"
+            "🎨 Тема: {theme}\n"
+            "📦 Формат: {fmt}\n"
+            "📐 Качество: {quality}"
+        ),
     },
     "en": {
         "start_caption": (
@@ -288,6 +304,22 @@ TEXTS = {
         "trim_start_ok": "✅ Start: {start}\n\n",
         "trim_invalid": "❌ Invalid format. Example: 0:15 or 1:30:00",
         "queued": "⏳ You are in queue ({pos}). Please wait...",
+        "settings": "⚙️ Settings",
+        "settings_title": "⚙️ Profile Settings",
+        "theme_toggle": "🎨 Theme: {theme}",
+        "theme_light": "☀️ Light",
+        "theme_dark":  "🌙 Dark",
+        "theme_changed": "🎨 Theme changed to {theme}",
+        "default_fmt": "📦 Default format: {fmt}",
+        "default_fmt_title": "📦 Choose default format:",
+        "default_quality": "📐 Default quality: {q}",
+        "pref_saved": "✅ Settings saved!",
+        "settings_info": (
+            "⚙️ Profile Settings\n\n"
+            "🎨 Theme: {theme}\n"
+            "📦 Format: {fmt}\n"
+            "📐 Quality: {quality}"
+        ),
         "me": (
             "👤 Your statistics:\n\n"
             "📥 Total downloads: {total}\n"
@@ -297,6 +329,22 @@ TEXTS = {
         "me_empty": "📭 You haven't downloaded anything yet!",
         "menu_title": "🎛 Main menu:",
         "queued": "⏳ You are in queue ({pos}). Please wait...",
+        "settings": "⚙️ Settings",
+        "settings_title": "⚙️ Profile Settings",
+        "theme_toggle": "🎨 Theme: {theme}",
+        "theme_light": "☀️ Light",
+        "theme_dark":  "🌙 Dark",
+        "theme_changed": "🎨 Theme changed to {theme}",
+        "default_fmt": "📦 Default format: {fmt}",
+        "default_fmt_title": "📦 Choose default format:",
+        "default_quality": "📐 Default quality: {q}",
+        "pref_saved": "✅ Settings saved!",
+        "settings_info": (
+            "⚙️ Profile Settings\n\n"
+            "🎨 Theme: {theme}\n"
+            "📦 Format: {fmt}\n"
+            "📐 Quality: {quality}"
+        ),
     }
 }
 
@@ -531,6 +579,7 @@ MENU_LABELS = {
         "blocks":    "🚫 Блокировки",
         "sendpatch": "📢 Разослать патч-ноут",
         "share_text": f"Скачиваю видео из TikTok, YouTube и не только! @balerndownloadsbot",
+        "settings": "⚙️ Настройки",
     },
     "en": {
         "download":  "⬇️ Download video",
@@ -544,6 +593,7 @@ MENU_LABELS = {
         "blocks":    "🚫 Blocks",
         "sendpatch": "📢 Send patch note",
         "share_text": f"Download videos from TikTok, YouTube and more! @balerndownloadsbot",
+        "settings": "⚙️ Settings",
     },
 }
 
@@ -556,6 +606,7 @@ def main_menu_keyboard(is_admin: bool = False, lang: str = "ru") -> InlineKeyboa
          InlineKeyboardButton(L["patchnote"], callback_data="menu_patchnote")],
         [InlineKeyboardButton(L["help"],      callback_data="menu_help"),
          InlineKeyboardButton(L["lang"],      callback_data="menu_lang")],
+        [InlineKeyboardButton(L["settings"],  callback_data="menu_settings")],
         [InlineKeyboardButton(L["share"],     switch_inline_query=L["share_text"])],
     ]
     if is_admin:
@@ -564,6 +615,52 @@ def main_menu_keyboard(is_admin: bool = False, lang: str = "ru") -> InlineKeyboa
             InlineKeyboardButton(L["blocks"],    callback_data="menu_blocks"),
         ])
         rows.append([InlineKeyboardButton(L["sendpatch"], callback_data="menu_sendpatch")])
+    return InlineKeyboardMarkup(rows)
+
+def settings_keyboard(theme: str, fmt: str, quality: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
+    theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
+    fmt_labels = {"video": "🎬 Видео", "audio": "🎵 MP3", "gif": "🌀 GIF",
+                  "circle": "⭕ Кружочек", "playlist": "📋 Плейлист"}
+    if lang == "en":
+        fmt_labels = {"video": "🎬 Video", "audio": "🎵 MP3", "gif": "🌀 GIF",
+                      "circle": "⭕ Circle", "playlist": "📋 Playlist"}
+    quality_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Макс." if lang == "ru" else "Max"}
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(T["theme_toggle"].format(theme=theme_label),
+                              callback_data="settings_theme")],
+        [InlineKeyboardButton(T["default_fmt"].format(fmt=fmt_labels.get(fmt, fmt)),
+                              callback_data="settings_fmt")],
+        [InlineKeyboardButton(T["default_quality"].format(q=quality_labels.get(quality, quality)),
+                              callback_data="settings_quality")],
+        [InlineKeyboardButton(T["back_btn"], callback_data="menu_back")],
+    ])
+
+def settings_fmt_keyboard(current: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура выбора формата по умолчанию."""
+    T = TEXTS.get(lang, TEXTS["ru"])
+    fmts = [
+        ("video",    T["fmt_video"]),
+        ("audio",    T["fmt_audio"]),
+        ("gif",      T["fmt_gif"]),
+        ("circle",   T["fmt_circle"]),
+    ]
+    rows = []
+    for fid, flabel in fmts:
+        mark = " ✅" if fid == current else ""
+        rows.append([InlineKeyboardButton(flabel + mark, callback_data=f"setfmt_{fid}")])
+    rows.append([InlineKeyboardButton(T["back_btn"], callback_data="settings_back")])
+    return InlineKeyboardMarkup(rows)
+
+def settings_quality_keyboard(current: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
+    qs = [("360", T["q360"]), ("480", T["q480"]), ("720", T["q720"]),
+          ("1080", T["q1080"]), ("best", T["qbest"])]
+    rows = []
+    for qid, qlabel in qs:
+        mark = " ✅" if qid == current else ""
+        rows.append([InlineKeyboardButton(qlabel + mark, callback_data=f"setquality_{qid}")])
+    rows.append([InlineKeyboardButton(T["back_btn"], callback_data="settings_back")])
     return InlineKeyboardMarkup(rows)
 
 def patchnote_keyboard(version: str) -> InlineKeyboardMarkup:
@@ -1108,52 +1205,99 @@ async def safe_edit(query, text, reply_markup=None):
 # ─── Команды ──────────────────────────────────────────────────────────────────
 
 # URL картинки меню — можно заменить на свою ссылку или оставить imgur
-MENU_PHOTO_URL = os.environ.get("MENU_PHOTO_URL", "https://i.imgur.com/4M34hi2.png")
-# Кэш file_id после первой отправки — Telegram хранит файл на своих серверах
-_MENU_PHOTO_FILE_ID: str | None = None
+# URL картинок меню — светлая и тёмная темы (можно задать через env)
+MENU_PHOTO_LIGHT = os.environ.get("MENU_PHOTO_LIGHT", "https://i.imgur.com/4M34hi2.png")
+MENU_PHOTO_DARK  = os.environ.get("MENU_PHOTO_DARK",  "https://i.imgur.com/4M34hi2.png")
+# GIF приветствия — показывается только при /start
+MENU_GIF_URL     = os.environ.get("MENU_GIF_URL", "")  # пусто = не показывать
 
-async def get_menu_photo() -> str:
-    """Возвращает file_id если уже загружали, иначе оригинальный URL."""
-    return _MENU_PHOTO_FILE_ID or MENU_PHOTO_URL
+# Кэш file_id по теме — Telegram хранит файлы на своих серверах
+_PHOTO_CACHE: dict[str, str] = {}  # "light"/"dark" -> file_id
+_GIF_FILE_ID: str | None = None
 
-async def send_menu_photo(target, caption: str, reply_markup, context) -> None:
-    """Отправляет меню с картинкой. Кэширует file_id после первой отправки."""
-    global _MENU_PHOTO_FILE_ID
-    photo = _MENU_PHOTO_FILE_ID or MENU_PHOTO_URL
+def get_user_theme(context) -> str:
+    """Возвращает тему пользователя: 'light' или 'dark'."""
+    return context.user_data.get("theme", "light")
+
+def get_menu_photo_url(theme: str) -> str:
+    """Возвращает URL картинки меню по теме."""
+    return MENU_PHOTO_DARK if theme == "dark" else MENU_PHOTO_LIGHT
+
+async def send_menu_photo(target, caption: str, reply_markup, context,
+                          gif: bool = False) -> None:
+    """Отправляет меню с картинкой или GIF. Кэширует file_id."""
+    global _GIF_FILE_ID
+    theme = get_user_theme(context)
+
+    # GIF приветствия — только если задан и явно запрошен
+    if gif and MENU_GIF_URL:
+        gif_src = _GIF_FILE_ID or MENU_GIF_URL
+        try:
+            if hasattr(target, 'reply_animation'):
+                msg = await target.reply_animation(
+                    animation=gif_src, caption=caption, reply_markup=reply_markup
+                )
+            else:
+                msg = await context.bot.send_animation(
+                    chat_id=target.id, animation=gif_src,
+                    caption=caption, reply_markup=reply_markup
+                )
+            if not _GIF_FILE_ID and msg.animation:
+                _GIF_FILE_ID = msg.animation.file_id
+                logger.info(f"GIF закэширован: {_GIF_FILE_ID}")
+            return
+        except Exception as e:
+            logger.warning(f"GIF не отправился: {e} — fallback на фото")
+
+    # Статичное фото по теме
+    photo = _PHOTO_CACHE.get(theme) or get_menu_photo_url(theme)
     try:
         if hasattr(target, 'reply_photo'):
-            msg = await target.reply_photo(photo=photo, caption=caption, reply_markup=reply_markup)
+            msg = await target.reply_photo(
+                photo=photo, caption=caption, reply_markup=reply_markup
+            )
         else:
-            msg = await context.bot.send_photo(chat_id=target.id, photo=photo, caption=caption, reply_markup=reply_markup)
-        # Кэшируем file_id для быстрой повторной отправки
-        if not _MENU_PHOTO_FILE_ID and msg.photo:
-            _MENU_PHOTO_FILE_ID = msg.photo[-1].file_id
-            logger.info(f"Меню фото закэшировано: {_MENU_PHOTO_FILE_ID}")
+            msg = await context.bot.send_photo(
+                chat_id=target.id, photo=photo,
+                caption=caption, reply_markup=reply_markup
+            )
+        if theme not in _PHOTO_CACHE and msg.photo:
+            _PHOTO_CACHE[theme] = msg.photo[-1].file_id
+            logger.info(f"Фото [{theme}] закэшировано: {_PHOTO_CACHE[theme]}")
     except Exception as e:
-        logger.warning(f"Не удалось отправить фото меню: {e}")
-        # Fallback — текст без фото
+        logger.warning(f"Фото меню не отправилось: {e}")
         text = caption
         if hasattr(target, 'reply_text'):
             await target.reply_text(text, reply_markup=reply_markup)
         else:
-            await context.bot.send_message(chat_id=target.id, text=text, reply_markup=reply_markup)
+            await context.bot.send_message(
+                chat_id=target.id, text=text, reply_markup=reply_markup
+            )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     ACTIVE_USERS[user.id] = get_lang(context)
     context.user_data["_uid"] = str(user.id)
 
-    # Загружаем сохранённый язык
+    # Загружаем сохранённые настройки
     data = get_data()
-    saved_lang = data.get("user_langs", {}).get(str(user.id))
+    uid_str = str(user.id)
+    saved_lang = data.get("user_langs", {}).get(uid_str)
     if saved_lang and "lang" not in context.user_data:
         context.user_data["lang"] = saved_lang
+    prefs = data.get("user_prefs", {}).get(uid_str, {})
+    if "theme" not in context.user_data and "theme" in prefs:
+        context.user_data["theme"] = prefs["theme"]
+    if "default_format" not in context.user_data and "format" in prefs:
+        context.user_data["default_format"] = prefs["format"]
+    if "default_quality" not in context.user_data and "quality" in prefs:
+        context.user_data["default_quality"] = prefs["quality"]
 
     is_admin = user.id == ADMIN_ID
     lang = get_lang(context)
 
     await update.message.reply_text("👇", reply_markup=persistent_menu_keyboard())
-    await send_menu_photo(update.message, t(context, "start_caption"), main_menu_keyboard(is_admin, lang), context)
+    await send_menu_photo(update.message, t(context, "start_caption"), main_menu_keyboard(is_admin, lang), context, gif=True)
 
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
@@ -1437,6 +1581,25 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception:
             await safe_edit(query, t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin, lang))
 
+    elif action == "settings":
+        theme = context.user_data.get("theme", "light")
+        def_fmt = context.user_data.get("default_format", "video")
+        def_quality = context.user_data.get("default_quality", "best")
+        T = TEXTS.get(lang, TEXTS["ru"])
+        theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
+        fmt_labels_ru = {"video": "🎬 Видео", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕ Кружочек"}
+        fmt_labels_en = {"video": "🎬 Video", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕ Circle"}
+        fmt_labels = fmt_labels_en if lang == "en" else fmt_labels_ru
+        quality_label = {"360": "360p", "480": "480p", "720": "720p",
+                         "1080": "1080p", "best": "Макс." if lang == "ru" else "Max"}.get(def_quality, def_quality)
+        text = T["settings_info"].format(
+            theme=theme_label,
+            fmt=fmt_labels.get(def_fmt, def_fmt),
+            quality=quality_label
+        )
+        await safe_edit(query, text,
+                        reply_markup=settings_keyboard(theme, def_fmt, def_quality, lang))
+
     elif action == "download":
         await safe_edit(query, t(context, "no_url"))
 
@@ -1542,6 +1705,105 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     elif action == "unblock_input" and is_admin:
         context.user_data["admin_action"] = "unblock"
         await safe_edit(query, "✅ Введи ID пользователя для разблокировки:")
+
+# ─── Callback: настройки профиля ─────────────────────────────────────────────
+
+async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    lang = get_lang(context)
+    T = TEXTS.get(lang, TEXTS["ru"])
+
+    def _save_prefs():
+        """Сохраняем настройки пользователя в Redis/JSON."""
+        uid = str(query.from_user.id)
+        db = get_data()
+        prefs = db.setdefault("user_prefs", {}).setdefault(uid, {})
+        prefs["theme"]   = context.user_data.get("theme", "light")
+        prefs["format"]  = context.user_data.get("default_format", "video")
+        prefs["quality"] = context.user_data.get("default_quality", "best")
+        save_data(db)
+
+    if data == "settings_theme":
+        # Переключаем тему
+        current = context.user_data.get("theme", "light")
+        new_theme = "dark" if current == "light" else "light"
+        context.user_data["theme"] = new_theme
+        _save_prefs()
+        # Инвалидируем кэш фото чтобы следующее меню показало новую тему
+        theme_label = T["theme_dark"] if new_theme == "dark" else T["theme_light"]
+        def_fmt = context.user_data.get("default_format", "video")
+        def_quality = context.user_data.get("default_quality", "best")
+        fmt_labels = {"video": "🎬 Видео", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕ Кружочек"}
+        if lang == "en":
+            fmt_labels = {"video": "🎬 Video", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕ Circle"}
+        quality_label = {"360": "360p", "480": "480p", "720": "720p",
+                         "1080": "1080p", "best": "Макс." if lang == "ru" else "Max"}.get(def_quality, def_quality)
+        text = T["settings_info"].format(
+            theme=theme_label,
+            fmt=fmt_labels.get(def_fmt, def_fmt),
+            quality=quality_label
+        )
+        await safe_edit(query, text,
+                        reply_markup=settings_keyboard(new_theme, def_fmt, def_quality, lang))
+
+    elif data == "settings_fmt":
+        current_fmt = context.user_data.get("default_format", "video")
+        await safe_edit(query, T["default_fmt_title"],
+                        reply_markup=settings_fmt_keyboard(current_fmt, lang))
+
+    elif data.startswith("setfmt_"):
+        fmt = data.replace("setfmt_", "")
+        context.user_data["default_format"] = fmt
+        _save_prefs()
+        theme = context.user_data.get("theme", "light")
+        def_quality = context.user_data.get("default_quality", "best")
+        fmt_labels = {"video": "🎬 Видео", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕ Кружочек"}
+        if lang == "en":
+            fmt_labels = {"video": "🎬 Video", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕ Circle"}
+        quality_label = {"360": "360p", "480": "480p", "720": "720p",
+                         "1080": "1080p", "best": "Макс." if lang == "ru" else "Max"}.get(def_quality, def_quality)
+        theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
+        text = T["settings_info"].format(
+            theme=theme_label, fmt=fmt_labels.get(fmt, fmt), quality=quality_label
+        )
+        await safe_edit(query, text,
+                        reply_markup=settings_keyboard(theme, fmt, def_quality, lang))
+
+    elif data == "settings_quality":
+        current_q = context.user_data.get("default_quality", "best")
+        await safe_edit(query, T["default_fmt_title"],
+                        reply_markup=settings_quality_keyboard(current_q, lang))
+
+    elif data.startswith("setquality_"):
+        quality = data.replace("setquality_", "")
+        context.user_data["default_quality"] = quality
+        _save_prefs()
+        theme = context.user_data.get("theme", "light")
+        def_fmt = context.user_data.get("default_format", "video")
+        fmt_labels = {"video": "🎬 Видео", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕ Кружочек"}
+        if lang == "en":
+            fmt_labels = {"video": "🎬 Video", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕ Circle"}
+        quality_label = {"360": "360p", "480": "480p", "720": "720p",
+                         "1080": "1080p", "best": "Макс." if lang == "ru" else "Max"}.get(quality, quality)
+        theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
+        text = T["settings_info"].format(
+            theme=theme_label, fmt=fmt_labels.get(def_fmt, def_fmt), quality=quality_label
+        )
+        await safe_edit(query, text,
+                        reply_markup=settings_keyboard(theme, def_fmt, quality, lang))
+
+    elif data == "settings_back":
+        is_admin = query.from_user.id == ADMIN_ID
+        try:
+            await query.edit_message_caption(
+                caption=t(context, "menu_title"),
+                reply_markup=main_menu_keyboard(is_admin, lang)
+            )
+        except Exception:
+            await safe_edit(query, t(context, "menu_title"),
+                            reply_markup=main_menu_keyboard(is_admin, lang))
 
 # ─── Callback: навигация патч-нотов ──────────────────────────────────────────
 
@@ -2197,6 +2459,7 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handle_orientation_callback, pattern="^orient_"))
     app.add_handler(CallbackQueryHandler(handle_circle_callback,      pattern="^circle_"))
     app.add_handler(CallbackQueryHandler(handle_trim_callback,        pattern="^trim_"))
+    app.add_handler(CallbackQueryHandler(handle_settings_callback,    pattern="^settings_|^setfmt_|^setquality_"))
     app.add_handler(CallbackQueryHandler(handle_patch_nav_callback,   pattern="^patch_"))
     app.add_handler(CallbackQueryHandler(handle_cancel_callback,      pattern="^cancel_download"))
 
