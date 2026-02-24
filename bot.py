@@ -160,6 +160,10 @@ TEXTS = {
         "step_speed":   "⚡ Выбери скорость воспроизведения:",
         "step_trim":    "✂️ Хочешь обрезать?",
         "step_trim_gif":"✂️ Хочешь обрезать? (макс. 60 сек)",
+        "circle_menu": "⭕ Кружочек готов к скачке\n\n📐 Настрой параметры или скачай:",
+        "circle_speed": "⚡ Скорость: {speed}x",
+        "circle_audio": "🔊 Звук: {label}",
+        "circle_download": "⬇️ Скачать кружочек",
         "trim_yes": "✂️ Обрезать видео",
         "trim_no":  "⏭ Без обрезки",
         "orient_original":  "📱 Оригинал",
@@ -232,6 +236,10 @@ TEXTS = {
         "step_speed":   "⚡ Choose playback speed:",
         "step_trim":    "✂️ Do you want to trim?",
         "step_trim_gif":"✂️ Do you want to trim? (max 60 sec)",
+        "circle_menu": "⭕ Circle ready\n\n📐 Adjust settings or download:",
+        "circle_speed": "⚡ Speed: {speed}x",
+        "circle_audio": "🔊 Audio: {label}",
+        "circle_download": "⬇️ Download circle",
         "trim_yes": "✂️ Trim video",
         "trim_no":  "⏭ No trim",
         "orient_original":  "📱 Original",
@@ -558,6 +566,19 @@ def speed_keyboard(lang="ru") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(T["speed_1"],    callback_data="speed_1.0"),
          InlineKeyboardButton(T["speed_15"],   callback_data="speed_1.5")],
         [InlineKeyboardButton(T["speed_2"],    callback_data="speed_2.0")],
+    ])
+
+def circle_menu_keyboard(speed: str = "1.0", audio: str = "normal", lang: str = "ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
+    _, audio_label = AUDIO_OPTIONS.get(audio, (1.0, "🔊 Обычный"))
+    # Для English адаптируем label
+    audio_labels_en = {"mute": "🔇 Mute", "quiet": "🔉 Quiet", "normal": "🔊 Normal", "loud": "📢 Loud"}
+    if lang == "en":
+        audio_label = audio_labels_en.get(audio, audio_label)
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(T["circle_speed"].format(speed=speed), callback_data="circle_speed"),
+         InlineKeyboardButton(T["circle_audio"].format(label=audio_label), callback_data="circle_audio")],
+        [InlineKeyboardButton(T["circle_download"], callback_data="circle_download")],
     ])
 
 def orientation_keyboard(subs_on: bool = False, speed: str = "1.0", lang: str = "ru") -> InlineKeyboardMarkup:
@@ -1158,11 +1179,18 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             context.user_data["trim_end"] = text
             context.user_data["waiting_trim"] = False
             fmt = context.user_data.get("format", "video")
-            if fmt in ("gif", "circle"):
+            if fmt == "gif":
                 status_msg = await update.message.reply_text(
                     f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context))
                 )
                 await _run_download(user, status_msg, context)
+            elif fmt == "circle":
+                speed = context.user_data.get("speed", "1.0")
+                audio = context.user_data.get("audio", "normal")
+                await update.message.reply_text(
+                    t(context, "circle_menu"),
+                    reply_markup=circle_menu_keyboard(speed, audio, get_lang(context))
+                )
             else:
                 subs_on = context.user_data.get("subtitles", False)
                 speed = context.user_data.get("speed", "1.0")
@@ -1539,6 +1567,13 @@ async def handle_audio_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     speed = context.user_data.get("speed", "1.0")
     subs_on = context.user_data.get("subtitles", False)
+
+    # Если вернулись из меню кружочка — возвращаемся туда
+    if context.user_data.pop("circle_audio_return", False):
+        await safe_edit(query, t(context, "circle_menu"),
+                        reply_markup=circle_menu_keyboard(speed, audio, get_lang(context)))
+        return
+
     await safe_edit(
         query,
         f"🎬 {platform} • {ql} • {al}\n\n{t(context, 'step_orient')}",
@@ -1557,6 +1592,13 @@ async def handle_speed_callback(update: Update, context: ContextTypes.DEFAULT_TY
     _, al = AUDIO_OPTIONS.get(context.user_data.get("audio", "normal"), (1.0, ""))
     subs_on = context.user_data.get("subtitles", False)
     speed_label = SPEED_OPTIONS.get(speed, speed)
+    # Если вернулись из меню кружочка — возвращаемся туда
+    if context.user_data.pop("circle_speed_return", False):
+        audio = context.user_data.get("audio", "normal")
+        await safe_edit(query, t(context, "circle_menu"),
+                        reply_markup=circle_menu_keyboard(speed, audio, get_lang(context)))
+        return
+
     await safe_edit(
         query,
         f"🎬 {platform} • {ql} • {al}\n⚡ Скорость: {speed_label}\n\nВыбери ориентацию или скачай:",
@@ -1622,17 +1664,49 @@ async def handle_trim_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
 
+    fmt = context.user_data.get("format", "video")
     if query.data == "trim_no":
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
         context.user_data["subtitles"] = False
-        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context)))
-        await _run_download(query.from_user, query.message, context)
+        if fmt == "circle":
+            speed = context.user_data.get("speed", "1.0")
+            audio = context.user_data.get("audio", "normal")
+            await safe_edit(query, t(context, "circle_menu"),
+                            reply_markup=circle_menu_keyboard(speed, audio, get_lang(context)))
+        else:
+            await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context)))
+            await _run_download(query.from_user, query.message, context)
     else:
         context.user_data["waiting_trim"] = True
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
         await safe_edit(query, t(context, "trim_enter_start"))
+
+# ─── Callback: меню кружочка ──────────────────────────────────────────────────
+
+async def handle_circle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    lang = get_lang(context)
+
+    if data == "circle_speed":
+        # Открываем выбор скорости, потом вернёмся в circle_menu через speed callback
+        context.user_data["circle_speed_return"] = True
+        await safe_edit(query, t(context, "step_speed"), reply_markup=speed_keyboard(lang))
+        return
+
+    if data == "circle_audio":
+        # Открываем выбор громкости
+        context.user_data["circle_audio_return"] = True
+        await safe_edit(query, t(context, "step_audio"), reply_markup=audio_keyboard(lang))
+        return
+
+    if data == "circle_download":
+        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
+                        reply_markup=cancel_keyboard(lang))
+        await _run_download(query.from_user, query.message, context)
 
 # ─── Callback: отмена ─────────────────────────────────────────────────────────
 
@@ -1886,6 +1960,7 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handle_audio_callback,       pattern="^audio_"))
     app.add_handler(CallbackQueryHandler(handle_speed_callback,       pattern="^speed_"))
     app.add_handler(CallbackQueryHandler(handle_orientation_callback, pattern="^orient_"))
+    app.add_handler(CallbackQueryHandler(handle_circle_callback,      pattern="^circle_"))
     app.add_handler(CallbackQueryHandler(handle_trim_callback,        pattern="^trim_"))
     app.add_handler(CallbackQueryHandler(handle_patch_nav_callback,   pattern="^patch_"))
     app.add_handler(CallbackQueryHandler(handle_cancel_callback,      pattern="^cancel_download"))
