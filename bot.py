@@ -390,10 +390,12 @@ def update_stats(user_id: int, platform: str):
     uid = str(user_id)
     stats = data.setdefault("stats", {})
     stats["total"] = stats.get("total", 0) + 1
-    stats.setdefault("platforms", {})[platform] = stats["platforms"].get(platform, 0) + 1
-    stats.setdefault("users", {})[uid] = stats["users"].get(uid, 0) + 1
-    data.setdefault("user_platforms", {}).setdefault(uid, {})[platform] = \
-        data["user_platforms"][uid].get(platform, 0) + 1
+    plats = stats.setdefault("platforms", {})
+    plats[platform] = plats.get(platform, 0) + 1
+    users = stats.setdefault("users", {})
+    users[uid] = users.get(uid, 0) + 1
+    up = data.setdefault("user_platforms", {}).setdefault(uid, {})
+    up[platform] = up.get(platform, 0) + 1
     save_data(data)
 
 def check_limit(user_id: int) -> tuple[bool, int]:
@@ -714,7 +716,7 @@ async def download_thumbnail(url: str, output_path: Path) -> Path | None:
         logger.error(f"Ошибка скачивания thumbnail: {e}")
         return None
 
-async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt="video") -> Path | None:
+async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt="video", lang="ru") -> Path | None:
     format_str = QUALITY_OPTIONS.get(quality, QUALITY_OPTIONS["best"])
     if fmt == "audio":
         format_str = "bestaudio/best"
@@ -738,7 +740,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
                     asyncio.run_coroutine_threadsafe(
                         status_msg.edit_text(
                             f"⏳ {get_funny_status(pct)}",
-                            reply_markup=cancel_keyboard(get_lang(context))
+                            reply_markup=cancel_keyboard(lang)
                         ),
                         loop
                     )
@@ -786,7 +788,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
                 asyncio.run_coroutine_threadsafe(
                     status_msg.edit_text(
                         f"⏳ 🔄 Попытка {attempt + 1}/3, ждём {delay} сек...",
-                        reply_markup=cancel_keyboard(get_lang(context))
+                        reply_markup=cancel_keyboard(lang)
                     ),
                     loop
                 )
@@ -1146,7 +1148,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             context.user_data["trim_end"] = text
             context.user_data["waiting_trim"] = False
             fmt = context.user_data.get("format", "video")
-            if fmt == "gif":
+            if fmt in ("gif", "circle"):
                 status_msg = await update.message.reply_text(
                     f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context))
                 )
@@ -1721,7 +1723,7 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # ── Видео/GIF/Кружочек/MP3 ──
-        file_path = await download_video(url, quality, DOWNLOAD_DIR, status_msg, cancel_flag, fmt)
+        file_path = await download_video(url, quality, DOWNLOAD_DIR, status_msg, cancel_flag, fmt, lang=context.user_data.get("lang", "ru"))
 
         if cancel_flag.get("cancelled"):
             await status_msg.edit_text("❌ Загрузка отменена.")
