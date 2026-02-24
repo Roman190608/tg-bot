@@ -2217,8 +2217,23 @@ def main() -> None:
 
     logger.info(f"Бот v{BOT_VERSION} запущен...")
 
+    # Обработчик ошибок — логируем но не крашимся
+    async def error_handler(update, context):
+        err = context.error
+        if "Conflict" in str(err):
+            logger.warning("Конфликт polling — возможно запущен второй экземпляр бота. Жду 10 сек...")
+            await asyncio.sleep(10)
+        else:
+            logger.error(f"Ошибка: {err}")
+
+    app.add_error_handler(error_handler)
+
     logger.info("Запуск в Polling режиме...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    app.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+        error_callback=lambda err: logger.warning(f"Polling error: {err}"),
+    )
 
 
 if __name__ == "__main__":
