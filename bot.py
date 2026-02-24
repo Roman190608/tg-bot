@@ -8,6 +8,7 @@ import zipfile
 import random
 import shutil
 import glob as glob_module
+import sys
 from pathlib import Path
 from datetime import datetime, date
 
@@ -60,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN    = os.environ.get("BOT_TOKEN", "TOKEN_HERE")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
-BOT_VERSION  = os.environ.get("BOT_VERSION", "1.2")
+BOT_VERSION  = os.environ.get("BOT_VERSION", "1.3")
 ADMIN_ID     = int(os.environ.get("ADMIN_ID", "123456789"))
 DAILY_LIMIT  = 20
 HISTORY_SIZE = 10
@@ -71,6 +72,13 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DOWNLOAD_DIR = DATA_DIR / "downloads"
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 DATA_FILE    = DATA_DIR / "data.json"
+
+# ─── Redis & Webhook конфиг ──────────────────────────────────────────────────
+
+REDIS_URL      = os.environ.get("REDIS_URL")          # redis://... или None
+WEBHOOK_URL    = os.environ.get("WEBHOOK_URL")         # https://app.railway.app
+WEBHOOK_PORT   = int(os.environ.get("PORT", "8443"))   # Railway выставляет PORT сам
+WEBHOOK_PATH   = f"/webhook/{BOT_TOKEN}"
 
 ACTIVE_USERS: dict[int, str] = {}
 
@@ -115,6 +123,24 @@ PATCH_NOTES = {
             "• 📋 Download queue — no more rejections\n"
             "• ⚡ Speed up or slow down video\n"
             "• 🎬 Regular YouTube videos supported (not only Shorts)"
+        ),
+    },
+    "1.3": {
+        "ru": (
+            "🆕 Обновление v1.3\n\n"
+            "• 🚀 Webhook — бот реагирует мгновенно\n"
+            "• 🗄 Redis — история и статистика не сбрасываются при перезапуске\n"
+            "• 📦 Автосжатие видео >50 МБ вместо отказа\n"
+            "• 🔄 Автообновление yt-dlp раз в неделю\n"
+            "• 📋 Очередь переживает перезапуск сервера"
+        ),
+        "en": (
+            "🆕 Update v1.3\n\n"
+            "• 🚀 Webhook — instant bot responses\n"
+            "• 🗄 Redis — history and stats survive restarts\n"
+            "• 📦 Auto-compress videos >50 MB instead of failing\n"
+            "• 🔄 Auto-update yt-dlp weekly\n"
+            "• 📋 Download queue survives server restarts"
         ),
     },
 }
@@ -285,18 +311,72 @@ def t(context, key: str, **kwargs) -> str:
     text = TEXTS.get(lang, TEXTS["ru"]).get(key, key)
     return text.format(**kwargs) if kwargs else text
 
-# ─── Хранилище данных ─────────────────────────────────────────────────────────
+# ─── Хранилище данных (Redis + JSON fallback) ────────────────────────────────
+
+class Storage:
+    """Прозрачная обёртка: Redis если доступен, иначе data.json."""
+    _redis = None
+
+    @classmethod
+    def init(cls):
+        if not REDIS_URL:
+            logger.info("REDIS_URL не задан — используем data.json")
+            return
+        try:
+            import redis as redis_lib
+            cls._redis = redis_lib.from_url(REDIS_URL, decode_responses=True, socket_timeout=3)
+            cls._redis.ping()
+            logger.info("✅ Redis подключён")
+            # Мигрируем существующий data.json в Redis при первом запуске
+            if DATA_FILE.exists() and not cls._redis.exists("bot:data"):
+                try:
+                    raw = DATA_FILE.read_text(encoding="utf-8")
+                    cls._redis.set("bot:data", raw)
+                    logger.info("data.json мигрирован в Redis")
+                except Exception as e:
+                    logger.warning(f"Миграция data.json → Redis: {e}")
+        except Exception as e:
+            logger.warning(f"Redis недоступен, используем data.json: {e}")
+            cls._redis = None
+
+    @classmethod
+    def load(cls) -> dict:
+        if cls._redis:
+            try:
+                raw = cls._redis.get("bot:data")
+                if raw:
+                    return json.loads(raw)
+            except Exception as e:
+                logger.warning(f"Redis load error: {e}")
+        # Fallback — файл
+        if DATA_FILE.exists():
+            try:
+                return json.loads(DATA_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return {"stats": {}, "blocked": [], "downloads_today": {}, "last_reset": str(date.today())}
+
+    @classmethod
+    def save(cls, data: dict):
+        serialized = json.dumps(data, ensure_ascii=False, indent=2)
+        if cls._redis:
+            try:
+                cls._redis.set("bot:data", serialized)
+                return
+            except Exception as e:
+                logger.warning(f"Redis save error: {e}")
+        # Fallback — файл
+        try:
+            DATA_FILE.write_text(serialized, encoding="utf-8")
+        except Exception as e:
+            logger.error(f"Не удалось сохранить data.json: {e}")
+
 
 def load_data() -> dict:
-    if DATA_FILE.exists():
-        try:
-            return json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {"stats": {}, "blocked": [], "downloads_today": {}, "last_reset": str(date.today())}
+    return Storage.load()
 
 def save_data(data: dict):
-    DATA_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    Storage.save(data)
 
 def get_data() -> dict:
     data = load_data()
@@ -701,6 +781,43 @@ def convert_to_circle(input_path: Path) -> Path:
     ]
     ffmpeg_run(cmd)
     return output_path if output_path.exists() else input_path
+
+def compress_video(input_path: Path, target_mb: float = 45.0) -> Path:
+    """Сжимает видео до target_mb через двухпроходный VBR или CRF."""
+    output_path = input_path.with_stem(input_path.stem + "_compressed").with_suffix(".mp4")
+    # Получаем длительность через ffprobe
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(input_path)],
+            capture_output=True, text=True, timeout=30
+        )
+        duration = float(probe.stdout.strip())
+    except Exception:
+        duration = 0
+
+    if duration > 0:
+        # Целевой битрейт: target_mb * 8 * 1024 / duration (kbps), минус 128 на аудио
+        target_kbps = max(200, int(target_mb * 8 * 1024 / duration) - 128)
+        cmd = [
+            "ffmpeg", "-y", "-i", str(input_path),
+            "-c:v", "libx264", "-b:v", f"{target_kbps}k",
+            "-c:a", "aac", "-b:a", "128k",
+            "-preset", "fast", "-movflags", "+faststart",
+            str(output_path)
+        ]
+    else:
+        # Fallback: CRF 28 без точного контроля размера
+        cmd = [
+            "ffmpeg", "-y", "-i", str(input_path),
+            "-c:v", "libx264", "-crf", "28",
+            "-c:a", "aac", "-b:a", "96k",
+            "-preset", "fast",
+            str(output_path)
+        ]
+    ffmpeg_run(cmd)
+    return output_path if output_path.exists() else input_path
+
 
 def time_str_valid(t: str) -> bool:
     return bool(re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", t.strip()))
@@ -1753,6 +1870,20 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
     if lock.locked():
         # Уже идёт скачивание — ставим в очередь
         pos = DOWNLOAD_QUEUE.qsize() + 1
+        # Сохраняем задачу в Redis для персистентности
+        if Storage._redis:
+            try:
+                task_data = json.dumps({
+                    "user_id": user_id,
+                    "chat_id": status_msg.chat_id,
+                    "user_data": {
+                        k: v for k, v in context.user_data.items()
+                        if isinstance(v, (str, int, float, bool, list, dict, type(None)))
+                    }
+                })
+                Storage._redis.rpush("bot:queue:pending", task_data)
+            except Exception:
+                pass
         try:
             await status_msg.edit_text(t(context, "queued", pos=pos))
         except Exception:
@@ -1762,8 +1893,14 @@ async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
 
     async with lock:
         await _do_download(user, status_msg, context)
+        # Убираем из Redis-очереди если есть
+        if Storage._redis:
+            try:
+                Storage._redis.lrem("bot:queue:pending", 1, str(user_id))
+            except Exception:
+                pass
 
-    # Обрабатываем очередь
+    # Обрабатываем следующего в очереди
     if not DOWNLOAD_QUEUE.empty():
         try:
             queued_user, queued_msg, queued_data = await asyncio.wait_for(
@@ -1903,10 +2040,31 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             if current not in files_to_clean:
                 files_to_clean.append(current)
 
-        # Проверка размера
+        # Проверка размера — сжимаем вместо отказа
         if current.stat().st_size > MAX_FILE_MB * 1024 * 1024:
-            await status_msg.edit_text(f"❌ Файл больше {MAX_FILE_MB} МБ. Попробуй качество пониже.")
-            return
+            size_mb = current.stat().st_size / 1024 / 1024
+            if fmt in ("video", "circle") and ffmpeg_available():
+                await status_msg.edit_text(
+                    f"📦 Файл {size_mb:.1f} МБ — сжимаю до {MAX_FILE_MB} МБ..."
+                )
+                loop = asyncio.get_event_loop()
+                compressed = await loop.run_in_executor(
+                    None, compress_video, current, float(MAX_FILE_MB - 3)
+                )
+                if compressed != current:
+                    files_to_clean.append(compressed)
+                    current = compressed
+                # Если всё равно большой — отказываем
+                if current.stat().st_size > MAX_FILE_MB * 1024 * 1024:
+                    await status_msg.edit_text(
+                        f"❌ Не удалось сжать до {MAX_FILE_MB} МБ. Попробуй качество пониже."
+                    )
+                    return
+            else:
+                await status_msg.edit_text(
+                    f"❌ Файл {size_mb:.1f} МБ — больше {MAX_FILE_MB} МБ. Попробуй качество пониже."
+                )
+                return
 
         await status_msg.edit_text("📤 Отправляю...")
 
@@ -1958,10 +2116,67 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── Запуск ───────────────────────────────────────────────────────────────────
 
+# ─── Фоновые задачи ──────────────────────────────────────────────────────────
+
+async def task_ytdlp_update():
+    """Обновляет yt-dlp раз в неделю автоматически."""
+    while True:
+        await asyncio.sleep(7 * 24 * 3600)  # раз в неделю
+        try:
+            logger.info("🔄 Обновляю yt-dlp...")
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp",
+                 "--break-system-packages"],
+                capture_output=True, text=True, timeout=120
+            )
+            if result.returncode == 0:
+                # Получаем новую версию
+                ver_result = subprocess.run(
+                    [sys.executable, "-m", "yt_dlp", "--version"],
+                    capture_output=True, text=True
+                )
+                ver = ver_result.stdout.strip()
+                logger.info(f"✅ yt-dlp обновлён до {ver}")
+                try:
+                    await app_ref.bot.send_message(
+                        ADMIN_ID,
+                        f"✅ yt-dlp автоматически обновлён до версии {ver}"
+                    )
+                except Exception:
+                    pass
+            else:
+                logger.warning(f"yt-dlp update failed: {result.stderr}")
+        except Exception as e:
+            logger.error(f"Ошибка обновления yt-dlp: {e}")
+
+
+async def task_redis_queue():
+    """Обрабатывает персистентную очередь из Redis при старте."""
+    if not Storage._redis:
+        return
+    try:
+        # При рестарте достаём незавершённые задачи из Redis-очереди
+        pending = Storage._redis.lrange("bot:queue:pending", 0, -1)
+        if pending:
+            logger.info(f"Найдено {len(pending)} незавершённых задач в Redis-очереди")
+            Storage._redis.delete("bot:queue:pending")
+    except Exception as e:
+        logger.warning(f"Redis queue init error: {e}")
+
+
+# Глобальная ссылка на app для использования в фоновых задачах
+app_ref = None
+
+
 def main() -> None:
+    global app_ref
     asyncio.set_event_loop(asyncio.new_event_loop())
 
+    # Инициализируем Redis
+    Storage.init()
+
     app = Application.builder().token(BOT_TOKEN).build()
+    app_ref = app
 
     app.add_handler(CommandHandler("start",     start))
     app.add_handler(CommandHandler("menu",      menu_command))
@@ -1990,8 +2205,31 @@ def main() -> None:
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
+    # Регистрируем фоновые задачи через job_queue PTB
+    async def _start_background(app):
+        asyncio.create_task(task_ytdlp_update())
+        await task_redis_queue()
+
+    app.post_init = _start_background
+
     logger.info(f"Бот v{BOT_VERSION} запущен...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    if WEBHOOK_URL:
+        # ── Webhook режим (продакшн Railway) ──────────────────────────────────
+        webhook_url = WEBHOOK_URL.rstrip("/") + WEBHOOK_PATH
+        logger.info(f"Запуск в Webhook режиме: {webhook_url} port={WEBHOOK_PORT}")
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=WEBHOOK_PORT,
+            url_path=WEBHOOK_PATH,
+            webhook_url=webhook_url,
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+        )
+    else:
+        # ── Polling режим (локальная разработка) ──────────────────────────────
+        logger.info("Запуск в Polling режиме (нет WEBHOOK_URL)")
+        app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
 if __name__ == "__main__":
