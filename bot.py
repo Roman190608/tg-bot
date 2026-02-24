@@ -2222,16 +2222,23 @@ def main() -> None:
 
     if WEBHOOK_URL:
         # ── Webhook режим (продакшн Railway) ──────────────────────────────────
+        # Railway принимает трафик на 443 снаружи и пробрасывает на PORT внутри
+        # WEBHOOK_URL должен быть без порта: https://xxx.railway.app
         webhook_url = WEBHOOK_URL.rstrip("/") + WEBHOOK_PATH
-        logger.info(f"Запуск в Webhook режиме: {webhook_url} port={WEBHOOK_PORT}")
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=WEBHOOK_PORT,
-            url_path=WEBHOOK_PATH,
-            webhook_url=webhook_url,
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=True,
-        )
+        logger.info(f"Запуск в Webhook режиме: {webhook_url} (внутренний порт={WEBHOOK_PORT})")
+        try:
+            app.run_webhook(
+                listen="0.0.0.0",
+                port=WEBHOOK_PORT,
+                url_path=WEBHOOK_PATH,
+                webhook_url=webhook_url,
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,
+                secret_token=BOT_TOKEN[:20],  # защита от левых запросов
+            )
+        except Exception as e:
+            logger.error(f"Webhook не запустился: {e} — падаю в Polling")
+            app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
     else:
         # ── Polling режим (локальная разработка) ──────────────────────────────
         logger.info("Запуск в Polling режиме (нет WEBHOOK_URL)")
