@@ -76,9 +76,6 @@ DATA_FILE    = DATA_DIR / "data.json"
 # ─── Redis & Webhook конфиг ──────────────────────────────────────────────────
 
 REDIS_URL      = os.environ.get("REDIS_URL")          # redis://... или None
-WEBHOOK_URL    = os.environ.get("WEBHOOK_URL")         # https://app.railway.app
-WEBHOOK_PORT   = int(os.environ.get("PORT", "8443"))   # Railway выставляет PORT сам
-WEBHOOK_PATH   = f"/webhook/{BOT_TOKEN}"
 
 ACTIVE_USERS: dict[int, str] = {}
 
@@ -2220,29 +2217,8 @@ def main() -> None:
 
     logger.info(f"Бот v{BOT_VERSION} запущен...")
 
-    if WEBHOOK_URL:
-        # ── Webhook режим (продакшн Railway) ──────────────────────────────────
-        # Railway принимает трафик на 443 снаружи и пробрасывает на PORT внутри
-        # WEBHOOK_URL должен быть без порта: https://xxx.railway.app
-        webhook_url = WEBHOOK_URL.rstrip("/") + WEBHOOK_PATH
-        logger.info(f"Запуск в Webhook режиме: {webhook_url} (внутренний порт={WEBHOOK_PORT})")
-        try:
-            app.run_webhook(
-                listen="0.0.0.0",
-                port=WEBHOOK_PORT,
-                url_path=WEBHOOK_PATH,
-                webhook_url=webhook_url,
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True,
-                secret_token=BOT_TOKEN[:20],  # защита от левых запросов
-            )
-        except Exception as e:
-            logger.error(f"Webhook не запустился: {e} — падаю в Polling")
-            app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-    else:
-        # ── Polling режим (локальная разработка) ──────────────────────────────
-        logger.info("Запуск в Polling режиме (нет WEBHOOK_URL)")
-        app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    logger.info("Запуск в Polling режиме...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
 if __name__ == "__main__":
