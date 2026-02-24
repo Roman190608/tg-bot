@@ -805,7 +805,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
 
     return None
 
-async def download_playlist(url, quality, output_path, status_msg, cancel_flag) -> Path | None:
+async def download_playlist(url, quality, output_path, status_msg, cancel_flag, lang="ru") -> Path | None:
     playlist_dir = output_path / "playlist_tmp"
     playlist_dir.mkdir(exist_ok=True)
     count = {"n": 0}
@@ -819,7 +819,7 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag) 
             asyncio.run_coroutine_threadsafe(
                 status_msg.edit_text(
                     f"⏳ Скачиваю плейлист...\nСкачано видео: {count['n']}",
-                    reply_markup=cancel_keyboard(get_lang(context))
+                    reply_markup=cancel_keyboard(lang)
                 ),
                 loop
             )
@@ -1707,7 +1707,7 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
 
         # ── Плейлист ──
         if fmt == "playlist":
-            zip_path = await download_playlist(url, quality, DOWNLOAD_DIR, status_msg, cancel_flag)
+            zip_path = await download_playlist(url, quality, DOWNLOAD_DIR, status_msg, cancel_flag, lang=context.user_data.get("lang", "ru"))
             if cancel_flag.get("cancelled") or not zip_path or not zip_path.exists():
                 await status_msg.edit_text("❌ Не удалось скачать плейлист.")
                 return
