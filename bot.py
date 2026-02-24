@@ -993,7 +993,36 @@ async def safe_edit(query, text, reply_markup=None):
 
 # ─── Команды ──────────────────────────────────────────────────────────────────
 
-MENU_PHOTO_URL = "https://i.imgur.com/4M34hi2.png"
+# URL картинки меню — можно заменить на свою ссылку или оставить imgur
+MENU_PHOTO_URL = os.environ.get("MENU_PHOTO_URL", "https://i.imgur.com/4M34hi2.png")
+# Кэш file_id после первой отправки — Telegram хранит файл на своих серверах
+_MENU_PHOTO_FILE_ID: str | None = None
+
+async def get_menu_photo() -> str:
+    """Возвращает file_id если уже загружали, иначе оригинальный URL."""
+    return _MENU_PHOTO_FILE_ID or MENU_PHOTO_URL
+
+async def send_menu_photo(target, caption: str, reply_markup, context) -> None:
+    """Отправляет меню с картинкой. Кэширует file_id после первой отправки."""
+    global _MENU_PHOTO_FILE_ID
+    photo = _MENU_PHOTO_FILE_ID or MENU_PHOTO_URL
+    try:
+        if hasattr(target, 'reply_photo'):
+            msg = await target.reply_photo(photo=photo, caption=caption, reply_markup=reply_markup)
+        else:
+            msg = await context.bot.send_photo(chat_id=target.id, photo=photo, caption=caption, reply_markup=reply_markup)
+        # Кэшируем file_id для быстрой повторной отправки
+        if not _MENU_PHOTO_FILE_ID and msg.photo:
+            _MENU_PHOTO_FILE_ID = msg.photo[-1].file_id
+            logger.info(f"Меню фото закэшировано: {_MENU_PHOTO_FILE_ID}")
+    except Exception as e:
+        logger.warning(f"Не удалось отправить фото меню: {e}")
+        # Fallback — текст без фото
+        text = caption
+        if hasattr(target, 'reply_text'):
+            await target.reply_text(text, reply_markup=reply_markup)
+        else:
+            await context.bot.send_message(chat_id=target.id, text=text, reply_markup=reply_markup)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
@@ -1010,33 +1039,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lang = get_lang(context)
 
     await update.message.reply_text("👇", reply_markup=persistent_menu_keyboard())
-    try:
-        await update.message.reply_photo(
-            photo=MENU_PHOTO_URL,
-            caption=t(context, "start_caption"),
-            reply_markup=main_menu_keyboard(is_admin, lang)
-        )
-    except Exception:
-        await update.message.reply_text(
-            t(context, "start_caption"),
-            reply_markup=main_menu_keyboard(is_admin, lang)
-        )
+    await send_menu_photo(update.message, t(context, "start_caption"), main_menu_keyboard(is_admin, lang), context)
 
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     ACTIVE_USERS[user.id] = get_lang(context)
     lang = get_lang(context)
-    try:
-        await update.message.reply_photo(
-            photo=MENU_PHOTO_URL,
-            caption=t(context, "menu_title"),
-            reply_markup=main_menu_keyboard(user.id == ADMIN_ID, lang)
-        )
-    except Exception:
-        await update.message.reply_text(
-            t(context, "menu_title"),
-            reply_markup=main_menu_keyboard(user.id == ADMIN_ID, lang)
-        )
+    await send_menu_photo(update.message, t(context, "menu_title"), main_menu_keyboard(user.id == ADMIN_ID, lang), context)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(t(context, "help"))
@@ -1175,17 +1184,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if text == "🎛 Меню":
         ACTIVE_USERS[user.id] = get_lang(context)
         lang = get_lang(context)
-        try:
-            await update.message.reply_photo(
-                photo=MENU_PHOTO_URL,
-                caption=t(context, "menu_title"),
-                reply_markup=main_menu_keyboard(user.id == ADMIN_ID, lang)
-            )
-        except Exception:
-            await update.message.reply_text(
-                t(context, "menu_title"),
-                reply_markup=main_menu_keyboard(user.id == ADMIN_ID, lang)
-            )
+        await send_menu_photo(update.message, t(context, "menu_title"), main_menu_keyboard(user.id == ADMIN_ID, lang), context)
         return
 
     # Ввод времени обрезки
