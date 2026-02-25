@@ -244,7 +244,7 @@ TEXTS = {
         "preview_download": "⬇️ Скачать",
         "cancel_btn": "❌ Отмена",
         "preview_cancelled": "❌ Отменено.",
-        "merge_start": "🎬 Отправь видео-файлы по одному. Когда закончишь — нажми «Объединить».",
+        "merge_start": "🎬 Режим объединения видео\n\nОтправляй видео как файл (📎 → Файл → mp4), по одному.\nКогда добавишь все — нажми «Объединить».",
         "merge_btn": "🔗 Объединить",
         "merge_cancel_btn": "❌ Отмена",
         "merge_received": "✅ Видео {n} получено. Отправь ещё или нажми «Объединить».",
@@ -341,7 +341,7 @@ TEXTS = {
         "preview_download": "⬇️ Download",
         "cancel_btn": "❌ Cancel",
         "preview_cancelled": "❌ Cancelled.",
-        "merge_start": "🎬 Send video files one by one. When done — press «Merge».",
+        "merge_start": "🎬 Video merge mode\n\nSend videos as files (📎 → File → mp4), one by one.\nWhen all added — press «Merge».",
         "merge_btn": "🔗 Merge",
         "merge_cancel_btn": "❌ Cancel",
         "merge_received": "✅ Video {n} received. Send more or press «Merge».",
@@ -379,7 +379,7 @@ TEXTS = {
         "preview_download": "⬇️ Download",
         "cancel_btn": "❌ Cancel",
         "preview_cancelled": "❌ Cancelled.",
-        "merge_start": "🎬 Send video files one by one. When done — press «Merge».",
+        "merge_start": "🎬 Video merge mode\n\nSend videos as files (📎 → File → mp4), one by one.\nWhen all added — press «Merge».",
         "merge_btn": "🔗 Merge",
         "merge_cancel_btn": "❌ Cancel",
         "merge_received": "✅ Video {n} received. Send more or press «Merge».",
@@ -1558,7 +1558,16 @@ async def unblock_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    text = update.message.text.strip()
+    text = update.message.text.strip() if update.message.text else ""
+
+    # Режим объединения — ссылки и текст игнорируем
+    if context.user_data.get("waiting_merge"):
+        lang = context.user_data.get("lang", "ru")
+        msg = ("📎 Отправь видео как файл (не ссылку). Нажми 📎 → Файл → выбери mp4"
+               if lang == "ru" else
+               "📎 Send video as a file (not a link). Tap 📎 → File → choose mp4")
+        await update.message.reply_text(msg)
+        return
 
     # Кнопка Меню
     if text == "🎛 Меню":
@@ -1841,15 +1850,29 @@ async def handle_merge_callback(update: Update, context: ContextTypes.DEFAULT_TY
     lang = get_lang(context)
 
     if query.data == "merge_do":
-        files = context.user_data.get("merge_files", [])
-        if len(files) < 2:
-            await query.answer(t(context, "merge_need_two") if len(files) == 0 else 
-                              ("❌ Нужно минимум 2 видео, получено: " + str(len(files))), show_alert=True)
+        file_entries = context.user_data.get("merge_files", [])
+        if len(file_entries) < 2:
+            await query.answer(
+                f"❌ Нужно минимум 2 видео, сейчас: {len(file_entries)}" if get_lang(context) == "ru"
+                else f"❌ Need at least 2 videos, got: {len(file_entries)}",
+                show_alert=True
+            )
             return
         context.user_data["waiting_merge"] = False
-        logger.info(f"Merge: объединяю {len(files)} файлов: {files}")
         await safe_edit(query, t(context, "merge_processing"))
-        paths = [DOWNLOAD_DIR / f for f in files]
+        # Скачиваем файлы по file_id
+        paths = []
+        for i, entry in enumerate(file_entries):
+            try:
+                fname = DOWNLOAD_DIR / f"merge_{query.from_user.id}_{i}.mp4"
+                tg_file = await context.bot.get_file(entry["file_id"])
+                await tg_file.download_to_drive(fname)
+                paths.append(fname)
+                logger.info(f"merge: скачан файл {i+1}/{len(file_entries)}")
+            except Exception as e:
+                logger.error(f"merge download error: {e}")
+                await safe_edit(query, f"❌ Ошибка загрузки файла {i+1}: {e}")
+                return
         output = DOWNLOAD_DIR / f"merged_{query.from_user.id}.mp4"
         loop = asyncio.get_event_loop()
         ok = await loop.run_in_executor(None, merge_videos, paths, output)
@@ -1859,9 +1882,8 @@ async def handle_merge_callback(update: Update, context: ContextTypes.DEFAULT_TY
             output.unlink(missing_ok=True)
         else:
             await safe_edit(query, "❌ Не удалось объединить видео.")
-        # Чистим временные файлы
-        for fname in files:
-            try: (DOWNLOAD_DIR / fname).unlink(missing_ok=True)
+        for p in paths:
+            try: p.unlink(missing_ok=True)
             except: pass
         context.user_data["merge_files"] = []
 
@@ -2732,7 +2754,6 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     """Принимает видео-файлы для объединения."""
     lang = get_lang(context)
     if not context.user_data.get("waiting_merge"):
-        # Подсказка — как использовать merge
         hint = ("🔗 Хочешь объединить видео? Нажми «Объединить видео» в меню и потом отправляй файлы."
                 if lang == "ru" else
                 "🔗 Want to merge videos? Press «Merge videos» in the menu, then send files.")
@@ -2740,23 +2761,25 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
     video = update.message.video or update.message.document
     if not video:
+        await update.message.reply_text("❌ Не распознал видео-файл. Отправь как файл (документ).")
         return
-    # Скачиваем файл
-    try:
-        fname = f"merge_{update.effective_user.id}_{len(context.user_data.get('merge_files', []))}.mp4"
-        file = await context.bot.get_file(video.file_id)
-        dest = DOWNLOAD_DIR / fname
-        await file.download_to_drive(dest)
-        files = context.user_data.setdefault("merge_files", [])
-        files.append(fname)
-        n = len(files)
+    # Сохраняем file_id — скачаем при объединении
+    file_size_mb = (video.file_size or 0) / 1024 / 1024
+    if file_size_mb > 20:
         await update.message.reply_text(
-            t(context, "merge_received", n=n),
-            reply_markup=merge_keyboard(lang, count=n)
+            f"❌ Файл {file_size_mb:.0f} МБ — слишком большой (макс 20 МБ через Telegram)."
+            if lang == "ru" else
+            f"❌ File {file_size_mb:.0f} MB — too large (max 20 MB via Telegram)."
         )
-    except Exception as e:
-        logger.error(f"merge file download: {e}")
-        await update.message.reply_text("❌ Не удалось получить файл.")
+        return
+    files = context.user_data.setdefault("merge_files", [])
+    files.append({"file_id": video.file_id, "size": file_size_mb})
+    n = len(files)
+    logger.info(f"merge: добавлен файл {n}, file_id={video.file_id[:20]}...")
+    await update.message.reply_text(
+        t(context, "merge_received", n=n),
+        reply_markup=merge_keyboard(lang, count=n)
+    )
 
 # ─── Запуск ───────────────────────────────────────────────────────────────────
 
@@ -2870,7 +2893,13 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handle_patch_nav_callback,   pattern="^patch_"))
     app.add_handler(CallbackQueryHandler(handle_cancel_callback,      pattern="^cancel_download"))
 
-    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_file))
+    app.add_handler(MessageHandler(
+        filters.VIDEO | filters.Document.MimeType("video/mp4") | 
+        filters.Document.MimeType("video/quicktime") |
+        filters.Document.MimeType("video/x-matroska") |
+        filters.Document.MimeType("video/webm"),
+        handle_video_file
+    ))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(handle_preview_callback,       pattern="^preview_"))
     app.add_handler(CallbackQueryHandler(handle_download_again_callback, pattern="^download_again"))
