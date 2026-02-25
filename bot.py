@@ -724,6 +724,7 @@ MENU_LABELS = {
         "share_text": f"Скачиваю видео из TikTok, YouTube и не только! @balerndownloadsbot",
         "settings": "⚙️ Настройки",
         "merge": "🔗 Объединить видео",
+        "search": "🔍 Поиск YouTube",
     },
     "en": {
         "download":  "⬇️ Download video",
@@ -739,6 +740,7 @@ MENU_LABELS = {
         "share_text": f"Download videos from TikTok, YouTube and more! @balerndownloadsbot",
         "settings": "⚙️ Settings",
         "merge": "🔗 Merge videos",
+        "search": "🔍 YouTube Search",
     },
 }
 
