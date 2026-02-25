@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN    = os.environ.get("BOT_TOKEN", "TOKEN_HERE")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
-BOT_VERSION  = os.environ.get("BOT_VERSION", "1.3")
+BOT_VERSION  = os.environ.get("BOT_VERSION", "1.4")
 ADMIN_ID     = int(os.environ.get("ADMIN_ID", "123456789"))
 DAILY_LIMIT  = 20
 HISTORY_SIZE = 10
@@ -138,6 +138,26 @@ PATCH_NOTES = {
             "• 📦 Auto-compress videos >50 MB instead of failing\n"
             "• 🔄 Auto-update yt-dlp weekly\n"
             "• 📋 Download queue survives server restarts"
+        ),
+    },
+    "1.4": {
+        "ru": (
+            "🆕 Обновление v1.4\n\n"
+            "• 📊 Прогресс-бар при конвертации GIF, кружочка и скорости\n"
+            "• 🔍 Превью видео перед скачкой — название, длина, автор\n"
+            "• 🔄 Кнопка «Скачать ещё раз» под каждым файлом\n"
+            "• 🔔 Уведомление о сбросе лимита в полночь\n"
+            "• 🔗 Объединение нескольких видео в одно\n"
+            "• ⚠️ Алерты админу при накоплении ошибок"
+        ),
+        "en": (
+            "🆕 Update v1.4\n\n"
+            "• 📊 Progress bar during GIF, circle and speed conversion\n"
+            "• 🔍 Video preview before download — title, duration, author\n"
+            "• 🔄 «Download again» button under every file\n"
+            "• 🔔 Limit reset notification at midnight\n"
+            "• 🔗 Merge multiple videos into one\n"
+            "• ⚠️ Admin alerts on error accumulation"
         ),
     },
 }
