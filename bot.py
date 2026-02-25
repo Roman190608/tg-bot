@@ -741,6 +741,7 @@ MENU_LABELS = {
         "settings": "⚙️ Настройки",
         "merge": "🔗 Объединить видео",
         "search": "🔍 Поиск YouTube",
+        "sticker": "🎭 Стикерпак",
     },
     "en": {
         "download":  "⬇️ Download video",
@@ -757,6 +758,7 @@ MENU_LABELS = {
         "settings": "⚙️ Settings",
         "merge": "🔗 Merge videos",
         "search": "🔍 YouTube Search",
+        "sticker": "🎭 Stickerpack",
     },
 }
 
