@@ -1731,7 +1731,6 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
         new_theme = "dark" if current == "light" else "light"
         context.user_data["theme"] = new_theme
         _save_prefs()
-        # Инвалидируем кэш фото чтобы следующее меню показало новую тему
         theme_label = T["theme_dark"] if new_theme == "dark" else T["theme_light"]
         def_fmt = context.user_data.get("default_format", "video")
         def_quality = context.user_data.get("default_quality", "best")
@@ -1745,8 +1744,30 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
             fmt=fmt_labels.get(def_fmt, def_fmt),
             quality=quality_label
         )
-        await safe_edit(query, text,
-                        reply_markup=settings_keyboard(new_theme, def_fmt, def_quality, lang))
+        # Удаляем старое сообщение — нельзя поменять фото через edit
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        # Отправляем новое с другой картинкой
+        photo_url = MENU_PHOTO_DARK if new_theme == "dark" else MENU_PHOTO_LIGHT
+        cached = _PHOTO_CACHE.get(new_theme)
+        try:
+            msg = await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=cached or photo_url,
+                caption=text,
+                reply_markup=settings_keyboard(new_theme, def_fmt, def_quality, lang)
+            )
+            if new_theme not in _PHOTO_CACHE and msg.photo:
+                _PHOTO_CACHE[new_theme] = msg.photo[-1].file_id
+        except Exception as e:
+            logger.warning(f"Не удалось отправить фото темы: {e}")
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=text,
+                reply_markup=settings_keyboard(new_theme, def_fmt, def_quality, lang)
+            )
 
     elif data == "settings_fmt":
         current_fmt = context.user_data.get("default_format", "video")
