@@ -1276,14 +1276,10 @@ async def send_menu_photo(target, caption: str, reply_markup, context,
                 chat_id=target.id, text=text, reply_markup=reply_markup
             )
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user = update.effective_user
-    ACTIVE_USERS[user.id] = get_lang(context)
-    context.user_data["_uid"] = str(user.id)
-
-    # Загружаем сохранённые настройки
+def _load_user_prefs(user_id: int, context) -> None:
+    """Загружает настройки пользователя из Redis/JSON в context.user_data."""
     data = get_data()
-    uid_str = str(user.id)
+    uid_str = str(user_id)
     saved_lang = data.get("user_langs", {}).get(uid_str)
     if saved_lang and "lang" not in context.user_data:
         context.user_data["lang"] = saved_lang
@@ -1294,6 +1290,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         context.user_data["default_format"] = prefs["format"]
     if "default_quality" not in context.user_data and "quality" in prefs:
         context.user_data["default_quality"] = prefs["quality"]
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    ACTIVE_USERS[user.id] = get_lang(context)
+    context.user_data["_uid"] = str(user.id)
+
+    # Загружаем сохранённые настройки
+    _load_user_prefs(user.id, context)
 
     is_admin = user.id == ADMIN_ID
     lang = get_lang(context)
