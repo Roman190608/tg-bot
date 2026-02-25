@@ -1843,9 +1843,11 @@ async def handle_merge_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data == "merge_do":
         files = context.user_data.get("merge_files", [])
         if len(files) < 2:
-            await query.answer(t(context, "merge_need_two"), show_alert=True)
+            await query.answer(t(context, "merge_need_two") if len(files) == 0 else 
+                              ("❌ Нужно минимум 2 видео, получено: " + str(len(files))), show_alert=True)
             return
         context.user_data["waiting_merge"] = False
+        logger.info(f"Merge: объединяю {len(files)} файлов: {files}")
         await safe_edit(query, t(context, "merge_processing"))
         paths = [DOWNLOAD_DIR / f for f in files]
         output = DOWNLOAD_DIR / f"merged_{query.from_user.id}.mp4"
@@ -2295,10 +2297,13 @@ def merge_videos(paths: list[Path], output: Path) -> bool:
     return ok
 
 
-def merge_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+def merge_keyboard(lang: str = "ru", count: int = 0) -> InlineKeyboardMarkup:
     T = TEXTS.get(lang, TEXTS["ru"])
+    merge_label = f"🔗 Объединить ({count})" if count >= 2 else f"🔗 Объединить (нужно ещё {2-count})"
+    if lang == "en":
+        merge_label = f"🔗 Merge ({count})" if count >= 2 else f"🔗 Merge (need {2-count} more)"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(T.get("merge_btn", "🔗 Объединить"), callback_data="merge_do"),
+        [InlineKeyboardButton(merge_label, callback_data="merge_do"),
          InlineKeyboardButton(T.get("merge_cancel_btn", "❌ Отмена"), callback_data="merge_cancel")],
     ])
 
@@ -2370,8 +2375,13 @@ async def fetch_video_info(url: str) -> dict | None:
         def _get():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(url, download=False)
-        info = await asyncio.wait_for(loop.run_in_executor(None, _get), timeout=20)
+        info = await asyncio.wait_for(loop.run_in_executor(None, _get), timeout=30)
+        if info:
+            logger.info(f"preview OK: {info.get('title','?')[:40]}")
         return info
+    except asyncio.TimeoutError:
+        logger.warning(f"fetch_video_info timeout: {url[:50]}")
+        return None
     except Exception as e:
         logger.warning(f"fetch_video_info error: {e}")
         return None
@@ -2415,6 +2425,7 @@ async def show_preview_or_download(query, context: ContextTypes.DEFAULT_TYPE) ->
                         reply_markup=preview_keyboard(lang),
                         parse_mode="HTML")
     else:
+        logger.warning(f"preview failed for url: {url[:60]}, скачиваем без превью")
         await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
                         reply_markup=cancel_keyboard(lang))
         await _run_download(query.from_user, query.message, context)
@@ -2729,7 +2740,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         n = len(files)
         await update.message.reply_text(
             t(context, "merge_received", n=n),
-            reply_markup=merge_keyboard(lang)
+            reply_markup=merge_keyboard(lang, count=n)
         )
     except Exception as e:
         logger.error(f"merge file download: {e}")
@@ -2847,8 +2858,8 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handle_patch_nav_callback,   pattern="^patch_"))
     app.add_handler(CallbackQueryHandler(handle_cancel_callback,      pattern="^cancel_download"))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_file))
+    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_file), group=0)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text), group=1)
     app.add_handler(CallbackQueryHandler(handle_preview_callback,       pattern="^preview_"))
     app.add_handler(CallbackQueryHandler(handle_download_again_callback, pattern="^download_again"))
     app.add_handler(CallbackQueryHandler(handle_merge_callback,         pattern="^merge_"))
