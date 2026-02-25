@@ -1231,17 +1231,22 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
 
     if fmt in ("audio", "wav", "flac"):
         codec = audio_codec if fmt == "audio" else fmt
-        ydl_opts["postprocessors"] = [
+        # EmbedThumbnail поддерживается только для mp3, flac, m4a, mkv, ogg/opus
+        supports_thumbnail = codec in ("mp3", "flac", "m4a", "ogg", "opus")
+        postprocessors = [
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": codec,
                 "preferredquality": "0" if codec in ("wav", "flac") else "192",
             },
-            {"key": "FFmpegMetadata"},          # теги ID3
-            {"key": "EmbedThumbnail"},           # обложка
+            {"key": "FFmpegMetadata"},
         ]
-        ydl_opts["writethumbnail"] = True
-        ydl_opts["embed_thumbnail"] = True
+        if supports_thumbnail:
+            postprocessors.append({"key": "EmbedThumbnail"})
+        ydl_opts["postprocessors"] = postprocessors
+        if supports_thumbnail:
+            ydl_opts["writethumbnail"] = True
+            ydl_opts["embed_thumbnail"] = True
 
     def _download():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
