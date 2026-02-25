@@ -702,25 +702,27 @@ def admin_blocks_keyboard(blocked: list) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton("◀️ Назад", callback_data="menu_back")])
     return InlineKeyboardMarkup(rows)
 
-def format_keyboard(lang="ru") -> InlineKeyboardMarkup:
+def format_keyboard(lang="ru", default_fmt: str = "") -> InlineKeyboardMarkup:
     T = TEXTS.get(lang, TEXTS["ru"])
+    def btn(key, cb):
+        mark = " ✅" if cb == f"fmt_{default_fmt}" else ""
+        return InlineKeyboardButton(T[key] + mark, callback_data=cb)
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(T["fmt_video"],    callback_data="fmt_video"),
-         InlineKeyboardButton(T["fmt_audio"],    callback_data="fmt_audio")],
-        [InlineKeyboardButton(T["fmt_gif"],      callback_data="fmt_gif"),
-         InlineKeyboardButton(T["fmt_circle"],   callback_data="fmt_circle")],
-        [InlineKeyboardButton(T["fmt_thumb"],    callback_data="fmt_thumb"),
-         InlineKeyboardButton(T["fmt_playlist"], callback_data="fmt_playlist")],
+        [btn("fmt_video",    "fmt_video"),   btn("fmt_audio",    "fmt_audio")],
+        [btn("fmt_gif",      "fmt_gif"),     btn("fmt_circle",   "fmt_circle")],
+        [btn("fmt_thumb",    "fmt_thumb"),   btn("fmt_playlist", "fmt_playlist")],
     ])
 
-def quality_keyboard(lang="ru") -> InlineKeyboardMarkup:
+def quality_keyboard(lang="ru", default_quality: str = "") -> InlineKeyboardMarkup:
     T = TEXTS.get(lang, TEXTS["ru"])
+    def btn(key, cb):
+        qid = cb.replace("quality_", "")
+        mark = " ✅" if qid == default_quality else ""
+        return InlineKeyboardButton(T[key] + mark, callback_data=cb)
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(T["q360"],  callback_data="quality_360"),
-         InlineKeyboardButton(T["q480"],  callback_data="quality_480")],
-        [InlineKeyboardButton(T["q720"],  callback_data="quality_720"),
-         InlineKeyboardButton(T["q1080"], callback_data="quality_1080")],
-        [InlineKeyboardButton(T["qbest"], callback_data="quality_best")],
+        [btn("q360", "quality_360"), btn("q480", "quality_480")],
+        [btn("q720", "quality_720"), btn("q1080", "quality_1080")],
+        [btn("qbest", "quality_best")],
     ])
 
 def audio_keyboard(lang="ru") -> InlineKeyboardMarkup:
@@ -1559,7 +1561,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"🎬 Видео с {platform}\n"
         f"{t(context, 'remaining', remaining=remaining)}\n\n"
         f"{t(context, 'step1')}",
-        reply_markup=format_keyboard(get_lang(context))
+        reply_markup=format_keyboard(get_lang(context), context.user_data.get("default_format", ""))
     )
 
 # ─── Callback: меню ───────────────────────────────────────────────────────────
@@ -1908,7 +1910,7 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
     await safe_edit(
         query,
         f"🎬 {item['platform']}\n{t(context, 'remaining', remaining=remaining)}\n\n{t(context, 'step1')}",
-        reply_markup=format_keyboard(get_lang(context))
+        reply_markup=format_keyboard(get_lang(context), context.user_data.get("default_format", ""))
     )
 
 # ─── Callback: формат ─────────────────────────────────────────────────────────
@@ -1944,10 +1946,10 @@ async def handle_format_callback(update: Update, context: ContextTypes.DEFAULT_T
     elif fmt == "playlist":
         context.user_data["audio"] = "normal"
         context.user_data["orientation"] = "original"
-        await safe_edit(query, f"📋 {platform} • {t(context, 'fmt_playlist')}\n\n{t(context, 'step_quality')}", reply_markup=quality_keyboard(get_lang(context)))
+        await safe_edit(query, f"📋 {platform} • {t(context, 'fmt_playlist')}\n\n{t(context, 'step_quality')}", reply_markup=quality_keyboard(get_lang(context), context.user_data.get("default_quality", "")))
 
     else:  # video
-        await safe_edit(query, f"🎬 {platform} • {t(context, 'fmt_video')}\n\n{t(context, 'step_quality')}", reply_markup=quality_keyboard(get_lang(context)))
+        await safe_edit(query, f"🎬 {platform} • {t(context, 'fmt_video')}\n\n{t(context, 'step_quality')}", reply_markup=quality_keyboard(get_lang(context), context.user_data.get("default_quality", "")))
 
 # ─── Callback: качество ───────────────────────────────────────────────────────
 
