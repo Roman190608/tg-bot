@@ -506,8 +506,6 @@ class Storage:
                 decode_responses=True,
                 socket_timeout=10,
                 socket_connect_timeout=10,
-                retry_on_timeout=True,
-                ssl_cert_reqs=None,
             )
             cls._redis.ping()
             logger.info("✅ Redis подключён")
