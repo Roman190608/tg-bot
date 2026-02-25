@@ -140,26 +140,6 @@ PATCH_NOTES = {
             "• 📋 Download queue survives server restarts"
         ),
     },
-    "1.5": {
-        "ru": (
-            "🆕 Обновление v1.5\n\n"
-            "• 🌍 Новые платформы: Pinterest, Twitch VOD, Vimeo, Dailymotion\n"
-            "• 🎵 WAV и FLAC — извлечение аудио без потерь\n"
-            "• 🏷 MP3 теги и обложка трека автоматически\n"
-            "• 🎭 Стикерпаки Telegram → ZIP\n"
-            "• 🔍 Поиск видео по YouTube прямо в боте\n"
-            "• 🎶 SoundCloud — скачивание треков и плейлистов"
-        ),
-        "en": (
-            "🆕 Update v1.5\n\n"
-            "• 🌍 New platforms: Pinterest, Twitch VOD, Vimeo, Dailymotion\n"
-            "• 🎵 WAV and FLAC lossless audio extraction\n"
-            "• 🏷 MP3 tags and cover art automatically\n"
-            "• 🎭 Telegram stickerpacks → ZIP\n"
-            "• 🔍 YouTube search right inside the bot\n"
-            "• 🎶 SoundCloud — tracks and playlists"
-        ),
-    },
     "1.4": {
         "ru": (
             "🆕 Обновление v1.4\n\n"
@@ -180,6 +160,26 @@ PATCH_NOTES = {
             "• ⚠️ Admin alerts on error accumulation"
         ),
     },
+    "1.5": {
+        "ru": (
+            "🆕 Обновление v1.5\n\n"
+            "• 🌍 Новые платформы: Pinterest, Twitch VOD, Vimeo, Dailymotion\n"
+            "• 🎵 WAV и FLAC — извлечение аудио без потерь\n"
+            "• 🏷 MP3 теги и обложка трека автоматически\n"
+            "• 🎭 Стикерпаки Telegram → ZIP\n"
+            "• 🔍 Поиск видео по YouTube прямо в боте\n"
+            "• 🎶 SoundCloud — скачивание треков и плейлистов"
+        ),
+        "en": (
+            "🆕 Update v1.5\n\n"
+            "• 🌍 New platforms: Pinterest, Twitch VOD, Vimeo, Dailymotion\n"
+            "• 🎵 WAV and FLAC lossless audio extraction\n"
+            "• 🏷 MP3 tags and cover art automatically\n"
+            "• 🎭 Telegram stickerpacks → ZIP\n"
+            "• 🔍 YouTube search right inside the bot\n"
+            "• 🎶 SoundCloud — tracks and playlists"
+        ),
+    },
 }
 
 # ─── Переводы ─────────────────────────────────────────────────────────────────
@@ -194,10 +194,13 @@ TEXTS = {
         ),
         "help": (
             "📌 Как пользоваться:\n\n"
-            "1. Отправь ссылку на видео\n"
-            "2. Выбери формат: видео / MP3 / GIF / кружочек / обложка / плейлист\n"
+            "1. Отправь ссылку на видео (YouTube, TikTok, Instagram, VK, Twitter, Reddit, Pinterest, Vimeo, Dailymotion, Twitch, SoundCloud)\n"
+            "2. Выбери формат: видео / MP3 / WAV / FLAC / GIF / кружочек / обложка / плейлист\n"
             "3. Выбери качество и уровень звука\n"
             "4. Ориентация, субтитры, обрезка, скорость — или сразу «Скачать»\n\n"
+            "🎭 Стикерпаки: отправь ссылку t.me/addstickers/ИмяПака\n"
+            "🔍 Поиск: нажми «Поиск YouTube» в меню\n"
+            "🔗 Объединить видео: кнопка в меню → отправляй файлы\n\n"
             "⚠️ Лимит: 50 МБ и 20 скачиваний в день\n\n"
             "/menu — открыть меню\n"
             "/history — последние 10 ссылок\n"
@@ -208,7 +211,7 @@ TEXTS = {
         "blocked": "🚫 Ты заблокирован.",
         "limit": "⛔ Достигнут дневной лимит ({limit} скачиваний).\nВозвращайся завтра!",
         "no_url": "🔗 Пришли мне ссылку на видео.",
-        "unsupported": "❌ Платформа не поддерживается.\nПоддерживаются: TikTok, YouTube, Twitter, VK, Twitch, Reddit.",
+        "unsupported": "❌ Платформа не поддерживается.\nПоддерживаются: TikTok, YouTube, Instagram, Twitter, VK, Reddit, Pinterest, Vimeo, Dailymotion, Twitch, SoundCloud\n💡 Стикерпаки: t.me/addstickers/ИмяПака",
         "step1": "📦 Шаг 1 — выбери формат:",
         "remaining": "Осталось сегодня: {remaining}",
         "fmt_video": "🎬 Видео (MP4)",
@@ -568,9 +571,12 @@ SUPPORTED_PATTERNS = [
     r"dailymotion\.com", r"dai\.ly",
     r"music\.yandex\.(ru|com)", r"music\.yandex\.kz",
     r"open\.spotify\.com",
+    r"t\.me/addstickers/",
     # YouTube поиск и каналы для плейлиста
     r"youtube\.com/channel", r"youtube\.com/@", r"youtube\.com/c/",
     r"youtube\.com/playlist",
+    # Стикерпаки Telegram
+    r"t\.me/addstickers/",
 ]
 
 # Паттерны которые требуют особой обработки
@@ -813,16 +819,18 @@ def settings_quality_keyboard(current: str, lang: str = "ru") -> InlineKeyboardM
     return InlineKeyboardMarkup(rows)
 
 def patchnote_keyboard(version: str) -> InlineKeyboardMarkup:
-    versions = list(PATCH_NOTES.keys())
-    idx = versions.index(version) if version in versions else len(versions) - 1
+    versions = sorted(PATCH_NOTES.keys(), key=lambda v: [int(x) for x in v.split(".")], reverse=True)
     rows = []
-    nav = []
-    if idx > 0:
-        nav.append(InlineKeyboardButton("◀️", callback_data=f"patch_nav_{versions[idx-1]}"))
-    nav.append(InlineKeyboardButton(f"v{version}", callback_data="patch_noop"))
-    if idx < len(versions) - 1:
-        nav.append(InlineKeyboardButton("▶️", callback_data=f"patch_nav_{versions[idx+1]}"))
-    rows.append(nav)
+    # Кнопки всех версий — выбранная отмечена ✅, сначала новые
+    row = []
+    for v in versions:
+        mark = " ✅" if v == version else ""
+        row.append(InlineKeyboardButton(f"v{v}{mark}", callback_data=f"patch_nav_{v}"))
+        if len(row) == 3:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
     rows.append([InlineKeyboardButton("◀️ Назад", callback_data="menu_back")])
     return InlineKeyboardMarkup(rows)
 
@@ -1231,22 +1239,22 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
 
     if fmt in ("audio", "wav", "flac"):
         codec = audio_codec if fmt == "audio" else fmt
-        # EmbedThumbnail поддерживается только для mp3, flac, m4a, mkv, ogg/opus
-        supports_thumbnail = codec in ("mp3", "flac", "m4a", "ogg", "opus")
         postprocessors = [
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": codec,
                 "preferredquality": "0" if codec in ("wav", "flac") else "192",
             },
-            {"key": "FFmpegMetadata"},
         ]
-        if supports_thumbnail:
+        # FFmpegMetadata (теги) — работает для mp3, flac, ogg (требует mutagen)
+        # EmbedThumbnail — работает для mp3, flac, m4a, mkv, ogg
+        # WAV не поддерживает ни теги ни обложку
+        if codec in ("mp3", "flac", "ogg", "opus"):
+            postprocessors.append({"key": "FFmpegMetadata"})
+        if codec in ("mp3", "flac", "ogg", "opus"):
             postprocessors.append({"key": "EmbedThumbnail"})
-        ydl_opts["postprocessors"] = postprocessors
-        if supports_thumbnail:
             ydl_opts["writethumbnail"] = True
-            ydl_opts["embed_thumbnail"] = True
+        ydl_opts["postprocessors"] = postprocessors
 
     def _download():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1808,14 +1816,47 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(t(context, "limit", limit=DAILY_LIMIT))
         return
 
+    # Стикерпак — ловим и без https:// (t.me/addstickers/...)
+    sticker_match = re.search(r"(?:https?://)?t\.me/addstickers/([A-Za-z0-9_]+)", text)
+    if sticker_match:
+        pack_name = sticker_match.group(1)
+        await update.message.reply_text(t(context, "sticker_downloading"))
+        zip_path, count = await download_sticker_pack(pack_name, context.bot, DOWNLOAD_DIR)
+        if zip_path and count > 0:
+            with open(zip_path, "rb") as f:
+                await update.message.reply_document(document=f, filename=f"{pack_name}.zip",
+                                                     caption=t(context, "sticker_done", n=count))
+            zip_path.unlink(missing_ok=True)
+        else:
+            await update.message.reply_text(t(context, "sticker_not_found"))
+        return
+
     urls = re.findall(r"https?://[^\s]+", text)
     if not urls:
         await update.message.reply_text(t(context, "no_url"))
         return
 
     url = urls[0]
+    # Старая обработка стикерпаков через https (на случай если выше не поймало)
+    if re.search(STICKER_PATTERN, url, re.IGNORECASE):
+        pack_name = url.split("/addstickers/")[-1].split("?")[0].strip()
+        await update.message.reply_text(t(context, "sticker_downloading"))
+        zip_path, count = await download_sticker_pack(pack_name, context.bot, DOWNLOAD_DIR)
+        if zip_path and count > 0:
+            with open(zip_path, "rb") as f:
+                await update.message.reply_document(document=f, filename=f"{pack_name}.zip",
+                                                     caption=t(context, "sticker_done", n=count))
+            zip_path.unlink(missing_ok=True)
+        else:
+            await update.message.reply_text(t(context, "sticker_not_found"))
+        return
+
     if not is_supported_url(url):
-        await update.message.reply_text(t(context, "unsupported"))
+        lang = get_lang(context)
+        hint = ("💡 Для стикерпаков отправь ссылку вида: t.me/addstickers/ИмяПака" 
+                if lang == "ru" else 
+                "💡 For stickerpacks send a link like: t.me/addstickers/PackName")
+        await update.message.reply_text(t(context, "unsupported") + "\n\n" + hint)
         return
 
     platform = get_platform(url)
