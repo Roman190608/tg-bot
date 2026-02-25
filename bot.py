@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN    = os.environ.get("BOT_TOKEN", "TOKEN_HERE")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
-BOT_VERSION  = os.environ.get("BOT_VERSION", "1.4")
+BOT_VERSION  = os.environ.get("BOT_VERSION", "1.5")
 ADMIN_ID     = int(os.environ.get("ADMIN_ID", "123456789"))
 DAILY_LIMIT  = 20
 HISTORY_SIZE = 10
@@ -140,6 +140,26 @@ PATCH_NOTES = {
             "• 📋 Download queue survives server restarts"
         ),
     },
+    "1.5": {
+        "ru": (
+            "🆕 Обновление v1.5\n\n"
+            "• 🌍 Новые платформы: Pinterest, Twitch VOD, Vimeo, Dailymotion\n"
+            "• 🎵 WAV и FLAC — извлечение аудио без потерь\n"
+            "• 🏷 MP3 теги и обложка трека автоматически\n"
+            "• 🎭 Стикерпаки Telegram → ZIP\n"
+            "• 🔍 Поиск видео по YouTube прямо в боте\n"
+            "• 🎶 SoundCloud — скачивание треков и плейлистов"
+        ),
+        "en": (
+            "🆕 Update v1.5\n\n"
+            "• 🌍 New platforms: Pinterest, Twitch VOD, Vimeo, Dailymotion\n"
+            "• 🎵 WAV and FLAC lossless audio extraction\n"
+            "• 🏷 MP3 tags and cover art automatically\n"
+            "• 🎭 Telegram stickerpacks → ZIP\n"
+            "• 🔍 YouTube search right inside the bot\n"
+            "• 🎶 SoundCloud — tracks and playlists"
+        ),
+    },
     "1.4": {
         "ru": (
             "🆕 Обновление v1.4\n\n"
@@ -193,6 +213,25 @@ TEXTS = {
         "remaining": "Осталось сегодня: {remaining}",
         "fmt_video": "🎬 Видео (MP4)",
         "fmt_audio": "🎵 Аудио (MP3)",
+        "fmt_wav":   "🎵 Аудио (WAV)",
+        "fmt_flac":  "🎵 Аудио (FLAC)",
+        "fmt_sticker": "🎭 Стикерпак (ZIP)",
+        "audio_fmt_title": "🎵 Выбери формат аудио:",
+        "sticker_downloading": "🎭 Скачиваю стикерпак...",
+        "sticker_done": "🎭 Стикерпак готов! {n} стикеров",
+        "sticker_not_found": "❌ Стикерпак не найден.",
+        "search_youtube": "🔍 Поиск по YouTube:",
+        "search_enter": "🔍 Введи название трека или видео для поиска по YouTube:",
+        "searching": "🔍 Ищу...",
+        "search_no_results": "❌ Ничего не найдено.",
+        "search_results": "🔍 Результаты поиска. Выбери:",
+        "spotify_not_supported": "⚠️ Spotify не поддерживается напрямую — вставь ссылку на трек и получишь MP3 через yt-dlp (YouTube Music).",
+        "yandex_not_supported": "⚠️ Яндекс Музыка: вставь прямую ссылку на трек (music.yandex.ru/album/xxx/track/xxx).",
+        "search_results": "🔍 Результаты поиска:",
+        "search_placeholder": "Введи запрос для поиска на YouTube:",
+        "spotify_hint": "⚠️ Spotify требует spotdl. Устанавливаю...",
+        "yandex_hint": "⚠️ Яндекс Музыка — скачивание треков",
+        "platform_unsupported": "❌ Платформа не поддерживается для этого формата.",
         "fmt_gif":   "🌀 GIF",
         "fmt_circle":"⭕ Кружочек",
         "fmt_thumb": "🖼 Обложка",
@@ -254,6 +293,7 @@ TEXTS = {
         "limit_reset": "🔄 Лимит скачиваний сброшен! Снова доступно {limit} скачиваний.",
         "settings": "⚙️ Настройки",
         "merge": "🔗 Объединить видео",
+        "search": "🔍 Поиск YouTube",
         "settings_title": "⚙️ Настройки профиля",
         "theme_toggle": "🎨 Тема: {theme}",
         "theme_light": "☀️ Светлая",
@@ -298,6 +338,25 @@ TEXTS = {
         "remaining": "Downloads left today: {remaining}",
         "fmt_video": "🎬 Video (MP4)",
         "fmt_audio": "🎵 Audio (MP3)",
+        "fmt_wav":   "🎵 Audio (WAV)",
+        "fmt_flac":  "🎵 Audio (FLAC)",
+        "fmt_sticker": "🎭 Stickerpack (ZIP)",
+        "audio_fmt_title": "🎵 Choose audio format:",
+        "sticker_downloading": "🎭 Downloading stickerpack...",
+        "sticker_done": "🎭 Stickerpack ready! {n} stickers",
+        "sticker_not_found": "❌ Stickerpack not found.",
+        "search_youtube": "🔍 YouTube Search:",
+        "search_enter": "🔍 Enter a track or video title to search on YouTube:",
+        "searching": "🔍 Searching...",
+        "search_no_results": "❌ No results found.",
+        "search_results": "🔍 Search results. Choose:",
+        "spotify_not_supported": "⚠️ Spotify is not directly supported — paste a track link and get MP3 via yt-dlp (YouTube Music).",
+        "yandex_not_supported": "⚠️ Yandex Music: paste a direct track link (music.yandex.ru/album/xxx/track/xxx).",
+        "search_results": "🔍 Search results:",
+        "search_placeholder": "Enter a YouTube search query:",
+        "spotify_hint": "⚠️ Spotify requires spotdl. Installing...",
+        "yandex_hint": "⚠️ Yandex Music — track download",
+        "platform_unsupported": "❌ Platform not supported for this format.",
         "fmt_gif":   "🌀 GIF",
         "fmt_circle":"⭕ Circle",
         "fmt_thumb": "🖼 Thumbnail",
@@ -351,6 +410,7 @@ TEXTS = {
         "limit_reset": "🔄 Daily limit reset! {limit} downloads available again.",
         "settings": "⚙️ Settings",
         "merge": "🔗 Merge videos",
+        "search": "🔍 YouTube Search",
         "settings_title": "⚙️ Profile Settings",
         "theme_toggle": "🎨 Theme: {theme}",
         "theme_light": "☀️ Light",
@@ -493,13 +553,31 @@ def get_data() -> dict:
 # ─── Платформы ────────────────────────────────────────────────────────────────
 
 SUPPORTED_PATTERNS = [
+    # Существующие
     r"tiktok\.com", r"vm\.tiktok\.com",
     r"instagram\.com", r"instagr\.am",
     r"youtube\.com/shorts", r"youtube\.com/watch", r"youtu\.be",
     r"twitter\.com", r"x\.com",
     r"vk\.com", r"clips\.twitch\.tv",
     r"reddit\.com",
+    # Новые v1.5
+    r"pinterest\.com", r"pin\.it",
+    r"twitch\.tv/videos", r"twitch\.tv/.+/clip",
+    r"soundcloud\.com",
+    r"vimeo\.com",
+    r"dailymotion\.com", r"dai\.ly",
+    r"music\.yandex\.(ru|com)", r"music\.yandex\.kz",
+    r"open\.spotify\.com",
+    # YouTube поиск и каналы для плейлиста
+    r"youtube\.com/channel", r"youtube\.com/@", r"youtube\.com/c/",
+    r"youtube\.com/playlist",
 ]
+
+# Паттерны которые требуют особой обработки
+SOUNDCLOUD_PATTERN = r"soundcloud\.com"
+SPOTIFY_PATTERN    = r"open\.spotify\.com"
+YANDEX_PATTERN     = r"music\.yandex"
+STICKER_PATTERN    = r"t\.me/addstickers/"
 
 QUALITY_OPTIONS = {
     "360":  "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360][ext=mp4]/best[height<=360]",
@@ -555,13 +633,19 @@ def is_supported_url(url: str) -> bool:
 
 def get_platform(url: str) -> str:
     mapping = [
-        (r"tiktok\.com",               "TikTok"),
-        (r"instagram\.com|instagr\.am", "Instagram"),
-        (r"youtube\.com|youtu\.be",    "YouTube"),
-        (r"twitter\.com|x\.com",       "Twitter/X"),
-        (r"vk\.com",                   "VK"),
-        (r"twitch\.tv",                "Twitch"),
-        (r"reddit\.com",               "Reddit"),
+        (r"tiktok\.com",                    "TikTok"),
+        (r"instagram\.com|instagr\.am",     "Instagram"),
+        (r"youtube\.com|youtu\.be",         "YouTube"),
+        (r"twitter\.com|x\.com",            "Twitter/X"),
+        (r"vk\.com",                         "VK"),
+        (r"twitch\.tv",                      "Twitch"),
+        (r"reddit\.com",                     "Reddit"),
+        (r"pinterest\.com|pin\.it",         "Pinterest"),
+        (r"soundcloud\.com",                 "SoundCloud"),
+        (r"vimeo\.com",                      "Vimeo"),
+        (r"dailymotion\.com|dai\.ly",       "Dailymotion"),
+        (r"open\.spotify\.com",             "Spotify"),
+        (r"music\.yandex",                   "Яндекс Музыка"),
     ]
     for pattern, name in mapping:
         if re.search(pattern, url, re.IGNORECASE):
@@ -669,6 +753,7 @@ def main_menu_keyboard(is_admin: bool = False, lang: str = "ru") -> InlineKeyboa
          InlineKeyboardButton(L["lang"],      callback_data="menu_lang")],
         [InlineKeyboardButton(L["settings"],  callback_data="menu_settings"),
          InlineKeyboardButton(L["merge"],     callback_data="menu_merge")],
+        [InlineKeyboardButton(L["search"],    callback_data="menu_search")],
         [InlineKeyboardButton(L["share"],     switch_inline_query=L["share_text"])],
     ]
     if is_admin:
@@ -764,15 +849,33 @@ def admin_blocks_keyboard(blocked: list) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton("◀️ Назад", callback_data="menu_back")])
     return InlineKeyboardMarkup(rows)
 
-def format_keyboard(lang="ru", default_fmt: str = "") -> InlineKeyboardMarkup:
+def format_keyboard(lang="ru", default_fmt: str = "", url: str = "") -> InlineKeyboardMarkup:
     T = TEXTS.get(lang, TEXTS["ru"])
     def btn(key, cb):
         mark = " ✅" if cb == f"fmt_{default_fmt}" else ""
         return InlineKeyboardButton(T[key] + mark, callback_data=cb)
-    return InlineKeyboardMarkup([
+
+    # Базовые строки
+    rows = [
         [btn("fmt_video",    "fmt_video"),   btn("fmt_audio",    "fmt_audio")],
         [btn("fmt_gif",      "fmt_gif"),     btn("fmt_circle",   "fmt_circle")],
         [btn("fmt_thumb",    "fmt_thumb"),   btn("fmt_playlist", "fmt_playlist")],
+        [btn("fmt_wav",      "fmt_wav"),     btn("fmt_flac",     "fmt_flac")],
+    ]
+    # Стикерпак — только для t.me/addstickers
+    if url and re.search(STICKER_PATTERN, url, re.IGNORECASE):
+        rows.append([btn("fmt_sticker", "fmt_sticker")])
+
+    return InlineKeyboardMarkup(rows)
+
+
+def audio_format_keyboard(lang="ru") -> InlineKeyboardMarkup:
+    """Клавиатура выбора формата аудио: MP3 / WAV / FLAC."""
+    T = TEXTS.get(lang, TEXTS["ru"])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(T["fmt_audio"], callback_data="afmt_mp3"),
+         InlineKeyboardButton(T["fmt_wav"],   callback_data="afmt_wav"),
+         InlineKeyboardButton(T["fmt_flac"],  callback_data="afmt_flac")],
     ])
 
 def quality_keyboard(lang="ru", default_quality: str = "") -> InlineKeyboardMarkup:
@@ -1122,22 +1225,39 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
         },
     }
 
-    if fmt == "audio":
-        ydl_opts["postprocessors"] = [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "192",
-        }]
+    audio_codec = context.user_data.get("audio_format", "mp3") if context else "mp3"
+
+    if fmt in ("audio", "wav", "flac"):
+        codec = audio_codec if fmt == "audio" else fmt
+        ydl_opts["postprocessors"] = [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": codec,
+                "preferredquality": "0" if codec in ("wav", "flac") else "192",
+            },
+            {"key": "FFmpegMetadata"},          # теги ID3
+            {"key": "EmbedThumbnail"},           # обложка
+        ]
+        ydl_opts["writethumbnail"] = True
+        ydl_opts["embed_thumbnail"] = True
 
     def _download():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             p = Path(filename)
-            if fmt == "audio":
-                mp3 = p.with_suffix(".mp3")
-                if mp3.exists():
-                    return mp3
+            if fmt in ("audio", "wav", "flac"):
+                codec = context.user_data.get("audio_format", "mp3") if context else "mp3"
+                if fmt == "audio": ext = codec
+                else: ext = fmt
+                converted = p.with_suffix(f".{ext}")
+                if converted.exists():
+                    return converted
+                # fallback поиск любого аудио
+                for try_ext in (ext, "mp3", "opus", "m4a", "webm"):
+                    candidate = p.with_suffix(f".{try_ext}")
+                    if candidate.exists():
+                        return candidate
             if not p.exists():
                 mp4 = p.with_suffix(".mp4")
                 if mp4.exists():
@@ -1560,6 +1680,31 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user = update.effective_user
     text = update.message.text.strip() if update.message.text else ""
 
+    # Режим поиска YouTube
+    if context.user_data.get("waiting_search"):
+        context.user_data["waiting_search"] = False
+        query_text = text
+        lang = context.user_data.get("lang", "ru")
+        status = await update.message.reply_text(t(context, "searching"))
+        results = await youtube_search(query_text)
+        if not results:
+            await status.edit_text(t(context, "search_no_results"))
+            return
+        kb_rows = []
+        for i, r in enumerate(results[:5]):
+            title = r.get("title", "?")[:50]
+            dur = format_duration(r.get("duration", 0))
+            kb_rows.append([InlineKeyboardButton(
+                f"{title} [{dur}]",
+                callback_data=f"search_pick_{i}"
+            )])
+        context.user_data["search_results"] = results[:5]
+        await status.edit_text(
+            t(context, "search_results"),
+            reply_markup=InlineKeyboardMarkup(kb_rows)
+        )
+        return
+
     # Режим объединения — ссылки и текст игнорируем
     if context.user_data.get("waiting_merge"):
         lang = context.user_data.get("lang", "ru")
@@ -1667,6 +1812,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     platform = get_platform(url)
+
+    # Spotify — не поддерживается yt-dlp напрямую
+    if re.search(SPOTIFY_PATTERN, url, re.IGNORECASE):
+        await update.message.reply_text(t(context, "spotify_not_supported"))
+        return
+
     context.user_data["pending_url"] = url
     context.user_data["platform"] = platform
     context.user_data["cancel_flag"] = {"cancelled": False}
@@ -1690,7 +1841,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"🎬 Видео с {platform}\n"
         f"{t(context, 'remaining', remaining=remaining)}\n\n"
         f"{t(context, 'step1')}",
-        reply_markup=format_keyboard(get_lang(context), context.user_data.get("default_format", ""))
+        reply_markup=format_keyboard(get_lang(context), context.user_data.get("default_format", ""), context.user_data.get("pending_url", ""))
     )
 
 # ─── Callback: меню ───────────────────────────────────────────────────────────
@@ -1716,6 +1867,10 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["merge_files"] = []
         context.user_data["waiting_merge"] = True
         await safe_edit(query, t(context, "merge_start"), reply_markup=merge_keyboard(lang))
+
+    elif action == "search":
+        context.user_data["waiting_search"] = True
+        await safe_edit(query, t(context, "search_enter"))
 
     elif action == "settings":
         theme = context.user_data.get("theme", "light")
@@ -2094,7 +2249,7 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
     await safe_edit(
         query,
         f"🎬 {item['platform']}\n{t(context, 'remaining', remaining=remaining)}\n\n{t(context, 'step1')}",
-        reply_markup=format_keyboard(get_lang(context), context.user_data.get("default_format", ""))
+        reply_markup=format_keyboard(get_lang(context), context.user_data.get("default_format", ""), context.user_data.get("pending_url", ""))
     )
 
 # ─── Callback: формат ─────────────────────────────────────────────────────────
@@ -2106,15 +2261,35 @@ async def handle_format_callback(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data["format"] = fmt
     platform = context.user_data.get("platform", "Видео")
 
-    if fmt == "audio":
+    if fmt in ("audio", "wav", "flac"):
         context.user_data["quality"] = "best"
-        await safe_edit(query, f"🎵 {platform} • MP3\n\n{t(context, 'step_audio')}", reply_markup=audio_keyboard(get_lang(context)))
+        context.user_data["audio_format"] = fmt if fmt != "audio" else "mp3"
+        fmt_label = {"audio": "MP3", "wav": "WAV", "flac": "FLAC"}[fmt]
+        await safe_edit(query, f"🎵 {platform} • {fmt_label}\n\n{t(context, 'step_audio')}", reply_markup=audio_keyboard(get_lang(context)))
 
     elif fmt == "gif":
         context.user_data["quality"] = "480"
         context.user_data["audio"] = "mute"
         context.user_data["orientation"] = "original"
         await safe_edit(query, f"🌀 {platform} • GIF\n\n{t(context, 'step_trim')}", reply_markup=trim_keyboard(get_lang(context)))
+
+    elif fmt == "sticker":
+        # Стикерпак — сразу скачиваем
+        url = context.user_data.get("pending_url", "")
+        pack_name = url.split("/addstickers/")[-1].split("?")[0].strip()
+        await safe_edit(query, t(context, "sticker_downloading"))
+        zip_path, count = await download_sticker_pack(pack_name, context.bot, DOWNLOAD_DIR)
+        if zip_path and count > 0:
+            with open(zip_path, "rb") as f:
+                await query.message.reply_document(
+                    document=f,
+                    filename=f"{pack_name}.zip",
+                    caption=t(context, "sticker_done", n=count)
+                )
+            zip_path.unlink(missing_ok=True)
+        else:
+            await safe_edit(query, t(context, "sticker_not_found"))
+        return
 
     elif fmt == "circle":
         context.user_data["quality"] = "480"
@@ -2262,6 +2437,40 @@ async def handle_orientation_callback(update: Update, context: ContextTypes.DEFA
             reply_markup=orientation_keyboard(subs_on, speed, get_lang(context))
         )
 
+# ─── Callback: результаты поиска ────────────────────────────────────────────
+
+async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    idx = int(query.data.replace("search_pick_", ""))
+    results = context.user_data.get("search_results", [])
+    if idx >= len(results):
+        await safe_edit(query, "❌ Результат недоступен.")
+        return
+    item = results[idx]
+    url = item.get("url") or item.get("webpage_url", "")
+    if not url.startswith("http"):
+        url = f"https://www.youtube.com/watch?v={item.get('id','')}"
+    platform = "YouTube"
+    context.user_data["pending_url"]   = url
+    context.user_data["platform"]      = platform
+    context.user_data["cancel_flag"]   = {"cancelled": False}
+    context.user_data["trim_start"]    = None
+    context.user_data["trim_end"]      = None
+    context.user_data["subtitles"]     = False
+    context.user_data["waiting_trim"]  = False
+    context.user_data["speed"]         = "1.0"
+    lang = get_lang(context)
+    allowed, remaining = check_limit(query.from_user.id)
+    if not allowed:
+        await safe_edit(query, t(context, "limit", limit=DAILY_LIMIT))
+        return
+    await safe_edit(
+        query,
+        f"🎬 {platform}\n{t(context, 'remaining', remaining=remaining)}\n\n{t(context, 'step1')}",
+        reply_markup=format_keyboard(lang, context.user_data.get("default_format", ""), url)
+    )
+
 # ─── Callback: превью ────────────────────────────────────────────────────────
 
 async def handle_preview_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2382,6 +2591,51 @@ async def handle_cancel_callback(update: Update, context: ContextTypes.DEFAULT_T
     await safe_edit(query, "❌ Загрузка отменена.")
 
 # ─── Финальное скачивание ─────────────────────────────────────────────────────
+
+async def download_sticker_pack(pack_name: str, bot, dest_dir: Path) -> tuple[Path | None, int]:
+    """Скачивает стикерпак Telegram в ZIP. Возвращает (zip_path, count)."""
+    try:
+        sticker_set = await bot.get_sticker_set(pack_name)
+        stickers = sticker_set.stickers
+        zip_path = dest_dir / f"{pack_name}.zip"
+        count = 0
+        import zipfile, io
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for i, sticker in enumerate(stickers):
+                try:
+                    file = await bot.get_file(sticker.file_id)
+                    data = await file.download_as_bytearray()
+                    ext = "webm" if sticker.is_video else ("tgs" if sticker.is_animated else "webp")
+                    zf.writestr(f"{i+1:03d}.{ext}", bytes(data))
+                    count += 1
+                except Exception as e:
+                    logger.warning(f"sticker {i}: {e}")
+        return zip_path, count
+    except Exception as e:
+        logger.error(f"download_sticker_pack: {e}")
+        return None, 0
+
+
+async def youtube_search(query: str, max_results: int = 5) -> list[dict]:
+    """Ищет видео на YouTube через yt-dlp."""
+    ydl_opts = {
+        "quiet": True, "no_warnings": True, "skip_download": True,
+        "extract_flat": True,
+        "extractor_args": {"youtube": {"player_client": ["ios"]}},
+        "socket_timeout": 15,
+    }
+    try:
+        loop = asyncio.get_event_loop()
+        def _search():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
+                return info.get("entries", []) if info else []
+        results = await asyncio.wait_for(loop.run_in_executor(None, _search), timeout=20)
+        return [r for r in results if r]
+    except Exception as e:
+        logger.warning(f"youtube_search error: {e}")
+        return []
+
 
 async def fetch_video_info(url: str) -> dict | None:
     """Получает метаданные видео без скачивания."""
@@ -2901,6 +3155,7 @@ def main() -> None:
         handle_video_file
     ))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(CallbackQueryHandler(handle_search_callback,        pattern="^search_pick_"))
     app.add_handler(CallbackQueryHandler(handle_preview_callback,       pattern="^preview_"))
     app.add_handler(CallbackQueryHandler(handle_download_again_callback, pattern="^download_again"))
     app.add_handler(CallbackQueryHandler(handle_merge_callback,         pattern="^merge_"))
