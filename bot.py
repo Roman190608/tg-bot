@@ -501,7 +501,13 @@ class Storage:
             return
         try:
             import redis as redis_lib
-            cls._redis = redis_lib.from_url(REDIS_URL, decode_responses=True, socket_timeout=3)
+            cls._redis = redis_lib.from_url(
+                REDIS_URL,
+                decode_responses=True,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+                ssl_cert_reqs=None,  # Upstash TLS — не проверяем сертификат
+            )
             cls._redis.ping()
             logger.info("✅ Redis подключён")
             # Мигрируем существующий data.json в Redis при первом запуске
