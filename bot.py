@@ -501,12 +501,15 @@ class Storage:
             return
         try:
             import redis as redis_lib
+            import ssl
             cls._redis = redis_lib.from_url(
                 REDIS_URL,
                 decode_responses=True,
-                socket_timeout=5,
-                socket_connect_timeout=5,
-                ssl_cert_reqs=None,  # Upstash TLS — не проверяем сертификат
+                socket_timeout=10,
+                socket_connect_timeout=10,
+                retry_on_timeout=True,
+                ssl_cert_reqs=None,
+                ssl=REDIS_URL.startswith("rediss://"),
             )
             cls._redis.ping()
             logger.info("✅ Redis подключён")
