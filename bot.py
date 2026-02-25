@@ -2250,6 +2250,7 @@ async def handle_preview_callback(update: Update, context: ContextTypes.DEFAULT_
     if query.data == "preview_confirm":
         await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
                         reply_markup=cancel_keyboard(lang))
+        # Используем текущее сообщение как статус-сообщение для download
         await _run_download(query.from_user, query.message, context)
 
     elif query.data == "preview_cancel":
@@ -2409,7 +2410,13 @@ async def show_preview_or_download(query, context: ContextTypes.DEFAULT_TYPE) ->
     """Показывает превью видео или сразу скачивает если превью недоступно."""
     lang = get_lang(context)
     url = context.user_data.get("pending_url", "")
-    await safe_edit(query, t(context, "preview_loading"))
+    # Скрываем старое меню — убираем кнопки
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    # Отправляем новое сообщение с лоадером
+    status = await query.message.reply_text(t(context, "preview_loading"))
     info = await fetch_video_info(url)
     if info:
         title    = info.get("title", "?")[:60]
@@ -2417,18 +2424,18 @@ async def show_preview_or_download(query, context: ContextTypes.DEFAULT_TYPE) ->
         uploader = info.get("uploader") or info.get("channel") or ""
         views    = info.get("view_count")
         views_str = f"👁 {views:,}".replace(",", " ") if views else ""
-        lines = [f"🎬 <b>{title}</b>", f"⏱ {dur}"]
+        lines = [f"🎬 {title}", f"⏱ {dur}"]
         if uploader: lines.append(f"👤 {uploader}")
         if views_str: lines.append(views_str)
-        lines.append("<b>Скачать?</b>" if lang == "ru" else "<b>Download?</b>")
-        await safe_edit(query, "\n".join(lines),
-                        reply_markup=preview_keyboard(lang),
-                        parse_mode="HTML")
+        lines.append("\nСкачать?" if lang == "ru" else "\nDownload?")
+        await status.edit_text("\n".join(lines), reply_markup=preview_keyboard(lang))
+        # Сохраняем статус-сообщение для preview_confirm
+        context.user_data["preview_status_id"] = status.message_id
     else:
         logger.warning(f"preview failed for url: {url[:60]}, скачиваем без превью")
-        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
-                        reply_markup=cancel_keyboard(lang))
-        await _run_download(query.from_user, query.message, context)
+        await status.edit_text(f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
+                               reply_markup=cancel_keyboard(lang))
+        await _run_download(query.from_user, status, context)
 
 
 async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
@@ -2723,9 +2730,14 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Принимает видео-файлы для объединения."""
-    if not context.user_data.get("waiting_merge"):
-        return
     lang = get_lang(context)
+    if not context.user_data.get("waiting_merge"):
+        # Подсказка — как использовать merge
+        hint = ("🔗 Хочешь объединить видео? Нажми «Объединить видео» в меню и потом отправляй файлы."
+                if lang == "ru" else
+                "🔗 Want to merge videos? Press «Merge videos» in the menu, then send files.")
+        await update.message.reply_text(hint)
+        return
     video = update.message.video or update.message.document
     if not video:
         return
@@ -2858,8 +2870,8 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handle_patch_nav_callback,   pattern="^patch_"))
     app.add_handler(CallbackQueryHandler(handle_cancel_callback,      pattern="^cancel_download"))
 
-    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_file), group=0)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text), group=1)
+    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_file))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(handle_preview_callback,       pattern="^preview_"))
     app.add_handler(CallbackQueryHandler(handle_download_again_callback, pattern="^download_again"))
     app.add_handler(CallbackQueryHandler(handle_merge_callback,         pattern="^merge_"))
