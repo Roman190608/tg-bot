@@ -229,6 +229,10 @@ TEXTS = {
         "search_no_results": "❌ Ничего не найдено.",
         "search_results": "🔍 Результаты поиска. Выбери:",
         "spotify_not_supported": "⚠️ Spotify не поддерживается напрямую — вставь ссылку на трек и получишь MP3 через yt-dlp (YouTube Music).",
+        "pinterest_hint": "📌 Pinterest: работает только для видео-пинов. Если это картинка — скачать не получится.",
+        "yandex_geo_error": "❌ Яндекс Музыка недоступна с серверов бота (ошибка 451 — геоблок). Бот работает вне России и не может скачивать с Яндекс Музыки.",
+        "menu_sticker": "🎭 Стикерпак",
+        "sticker_enter": "🎭 Отправь ссылку на стикерпак:\nt.me/addstickers/ИмяПака",
         "yandex_not_supported": "⚠️ Яндекс Музыка: вставь прямую ссылку на трек (music.yandex.ru/album/xxx/track/xxx).",
         "search_results": "🔍 Результаты поиска:",
         "search_placeholder": "Введи запрос для поиска на YouTube:",
@@ -297,6 +301,7 @@ TEXTS = {
         "settings": "⚙️ Настройки",
         "merge": "🔗 Объединить видео",
         "search": "🔍 Поиск YouTube",
+        "sticker": "🎭 Стикерпак",
         "settings_title": "⚙️ Настройки профиля",
         "theme_toggle": "🎨 Тема: {theme}",
         "theme_light": "☀️ Светлая",
@@ -354,6 +359,10 @@ TEXTS = {
         "search_no_results": "❌ No results found.",
         "search_results": "🔍 Search results. Choose:",
         "spotify_not_supported": "⚠️ Spotify is not directly supported — paste a track link and get MP3 via yt-dlp (YouTube Music).",
+        "pinterest_hint": "📌 Pinterest: only video pins are supported. Images cannot be downloaded.",
+        "yandex_geo_error": "❌ Yandex Music is unavailable from the bot's servers (error 451 — geo-block). The bot runs outside Russia and cannot download from Yandex Music.",
+        "menu_sticker": "🎭 Stickerpack",
+        "sticker_enter": "🎭 Send a stickerpack link:\nt.me/addstickers/PackName",
         "yandex_not_supported": "⚠️ Yandex Music: paste a direct track link (music.yandex.ru/album/xxx/track/xxx).",
         "search_results": "🔍 Search results:",
         "search_placeholder": "Enter a YouTube search query:",
@@ -414,6 +423,7 @@ TEXTS = {
         "settings": "⚙️ Settings",
         "merge": "🔗 Merge videos",
         "search": "🔍 YouTube Search",
+        "sticker": "🎭 Stickerpack",
         "settings_title": "⚙️ Profile Settings",
         "theme_toggle": "🎨 Theme: {theme}",
         "theme_light": "☀️ Light",
@@ -761,7 +771,8 @@ def main_menu_keyboard(is_admin: bool = False, lang: str = "ru") -> InlineKeyboa
          InlineKeyboardButton(L["lang"],      callback_data="menu_lang")],
         [InlineKeyboardButton(L["settings"],  callback_data="menu_settings"),
          InlineKeyboardButton(L["merge"],     callback_data="menu_merge")],
-        [InlineKeyboardButton(L["search"],    callback_data="menu_search")],
+        [InlineKeyboardButton(L["search"],    callback_data="menu_search"),
+         InlineKeyboardButton(L["sticker"],   callback_data="menu_sticker")],
         [InlineKeyboardButton(L["share"],     switch_inline_query=L["share_text"])],
     ]
     if is_admin:
@@ -1695,6 +1706,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user = update.effective_user
     text = update.message.text.strip() if update.message.text else ""
 
+    # Режим ожидания стикерпака
+    if context.user_data.get("waiting_sticker"):
+        context.user_data["waiting_sticker"] = False
+        sticker_match = re.search(r"(?:https?://)?t\.me/addstickers/([A-Za-z0-9_]+)", text)
+        if not sticker_match:
+            await update.message.reply_text("❌ Неверная ссылка. Формат: t.me/addstickers/ИмяПака")
+            return
+        pack_name = sticker_match.group(1)
+        await update.message.reply_text(t(context, "sticker_downloading"))
+        zip_path, count = await download_sticker_pack(pack_name, context.bot, DOWNLOAD_DIR)
+        if zip_path and count > 0:
+            with open(zip_path, "rb") as f:
+                await update.message.reply_document(document=f, filename=f"{pack_name}.zip",
+                                                     caption=t(context, "sticker_done", n=count))
+            zip_path.unlink(missing_ok=True)
+        else:
+            await update.message.reply_text(t(context, "sticker_not_found"))
+        return
+
     # Режим поиска YouTube
     if context.user_data.get("waiting_search"):
         context.user_data["waiting_search"] = False
@@ -1866,6 +1896,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(t(context, "spotify_not_supported"))
         return
 
+    # Яндекс Музыка — геоблок вне России
+    if re.search(YANDEX_PATTERN, url, re.IGNORECASE):
+        await update.message.reply_text(t(context, "yandex_geo_error"))
+        return
+
+    # Pinterest — предупреждение что работает только для видео
+    if re.search(r"pinterest\.com|pin\.it", url, re.IGNORECASE):
+        await update.message.reply_text(t(context, "pinterest_hint"))
+
     context.user_data["pending_url"] = url
     context.user_data["platform"] = platform
     context.user_data["cancel_flag"] = {"cancelled": False}
@@ -1919,6 +1958,10 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     elif action == "search":
         context.user_data["waiting_search"] = True
         await safe_edit(query, t(context, "search_enter"))
+
+    elif action == "sticker":
+        context.user_data["waiting_sticker"] = True
+        await safe_edit(query, t(context, "sticker_enter"))
 
     elif action == "settings":
         theme = context.user_data.get("theme", "light")
