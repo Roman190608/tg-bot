@@ -1176,7 +1176,7 @@ async def download_thumbnail(url: str, output_path: Path) -> Path | None:
         logger.error(f"Ошибка скачивания thumbnail: {e}")
         return None
 
-async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt="video", lang="ru") -> Path | None:
+async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt="video", lang="ru", audio_codec="mp3") -> Path | None:
     format_str = QUALITY_OPTIONS.get(quality, QUALITY_OPTIONS["best"])
     if fmt == "audio":
         format_str = "bestaudio/best"
@@ -1227,7 +1227,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
         },
     }
 
-    audio_codec = context.user_data.get("audio_format", "mp3") if context else "mp3"
+    # audio_codec передаётся как параметр
 
     if fmt in ("audio", "wav", "flac"):
         codec = audio_codec if fmt == "audio" else fmt
@@ -1249,7 +1249,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
             filename = ydl.prepare_filename(info)
             p = Path(filename)
             if fmt in ("audio", "wav", "flac"):
-                codec = context.user_data.get("audio_format", "mp3") if context else "mp3"
+                codec = audio_codec if fmt == "audio" else fmt
                 if fmt == "audio": ext = codec
                 else: ext = fmt
                 converted = p.with_suffix(f".{ext}")
@@ -2824,7 +2824,7 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # ── Видео/GIF/Кружочек/MP3 ──
-        file_path = await download_video(url, quality, DOWNLOAD_DIR, status_msg, cancel_flag, fmt, lang=context.user_data.get("lang", "ru"))
+        file_path = await download_video(url, quality, DOWNLOAD_DIR, status_msg, cancel_flag, fmt, lang=context.user_data.get("lang", "ru"), audio_codec=context.user_data.get("audio_format", "mp3"))
 
         if cancel_flag.get("cancelled"):
             await status_msg.edit_text("❌ Загрузка отменена.")
