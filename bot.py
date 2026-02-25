@@ -2143,8 +2143,7 @@ async def handle_audio_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     if fmt == "audio":
         context.user_data["orientation"] = "original"
-        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context)))
-        await _run_download(query.from_user, query.message, context)
+        await show_preview_or_download(query, context)
         return
 
     speed = context.user_data.get("speed", "1.0")
@@ -2225,8 +2224,7 @@ async def handle_orientation_callback(update: Update, context: ContextTypes.DEFA
     elif data == "orient_download":
         if "orientation" not in context.user_data:
             context.user_data["orientation"] = "original"
-        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context)))
-        await _run_download(query.from_user, query.message, context)
+        await show_preview_or_download(query, context)
 
     else:
         orient = data.replace("orient_", "")
@@ -2272,8 +2270,7 @@ async def handle_trim_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             await safe_edit(query, t(context, "circle_menu"),
                             reply_markup=circle_menu_keyboard(speed, audio, get_lang(context)))
         else:
-            await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}", reply_markup=cancel_keyboard(get_lang(context)))
-            await _run_download(query.from_user, query.message, context)
+            await show_preview_or_download(query, context)
     else:
         context.user_data["waiting_trim"] = True
         context.user_data["trim_start"] = None
@@ -2396,6 +2393,31 @@ def preview_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(T.get("preview_download", "⬇️ Скачать"), callback_data="preview_confirm"),
          InlineKeyboardButton(T.get("cancel_btn", "❌ Отмена"), callback_data="preview_cancel")],
     ])
+
+
+async def show_preview_or_download(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает превью видео или сразу скачивает если превью недоступно."""
+    lang = get_lang(context)
+    url = context.user_data.get("pending_url", "")
+    await safe_edit(query, t(context, "preview_loading"))
+    info = await fetch_video_info(url)
+    if info:
+        title    = info.get("title", "?")[:60]
+        dur      = format_duration(info.get("duration", 0))
+        uploader = info.get("uploader") or info.get("channel") or ""
+        views    = info.get("view_count")
+        views_str = f"👁 {views:,}".replace(",", " ") if views else ""
+        lines = [f"🎬 <b>{title}</b>", f"⏱ {dur}"]
+        if uploader: lines.append(f"👤 {uploader}")
+        if views_str: lines.append(views_str)
+        lines.append("<b>Скачать?</b>" if lang == "ru" else "<b>Download?</b>")
+        await safe_edit(query, "\n".join(lines),
+                        reply_markup=preview_keyboard(lang),
+                        parse_mode="HTML")
+    else:
+        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
+                        reply_markup=cancel_keyboard(lang))
+        await _run_download(query.from_user, query.message, context)
 
 
 async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
