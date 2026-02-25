@@ -220,7 +220,20 @@ TEXTS = {
         "me_empty": "📭 Ты ещё ничего не скачивал!",
         "menu_title": "🎛 Главное меню:",
         "queued": "⏳ Ты в очереди ({pos}). Подожди...",
+        "preview_loading": "🔍 Получаю информацию о видео...",
+        "preview_download": "⬇️ Скачать",
+        "cancel_btn": "❌ Отмена",
+        "preview_cancelled": "❌ Отменено.",
+        "merge_start": "🎬 Отправь видео-файлы по одному. Когда закончишь — нажми «Объединить».",
+        "merge_btn": "🔗 Объединить",
+        "merge_cancel_btn": "❌ Отмена",
+        "merge_received": "✅ Видео {n} получено. Отправь ещё или нажми «Объединить».",
+        "merge_processing": "🔗 Объединяю видео...",
+        "merge_done": "✅ Видео объединены!",
+        "merge_need_two": "❌ Нужно минимум 2 видео.",
+        "limit_reset": "🔄 Лимит скачиваний сброшен! Снова доступно {limit} скачиваний.",
         "settings": "⚙️ Настройки",
+        "merge": "🔗 Объединить видео",
         "settings_title": "⚙️ Настройки профиля",
         "theme_toggle": "🎨 Тема: {theme}",
         "theme_light": "☀️ Светлая",
@@ -304,7 +317,20 @@ TEXTS = {
         "trim_start_ok": "✅ Start: {start}\n\n",
         "trim_invalid": "❌ Invalid format. Example: 0:15 or 1:30:00",
         "queued": "⏳ You are in queue ({pos}). Please wait...",
+        "preview_loading": "🔍 Getting video info...",
+        "preview_download": "⬇️ Download",
+        "cancel_btn": "❌ Cancel",
+        "preview_cancelled": "❌ Cancelled.",
+        "merge_start": "🎬 Send video files one by one. When done — press «Merge».",
+        "merge_btn": "🔗 Merge",
+        "merge_cancel_btn": "❌ Cancel",
+        "merge_received": "✅ Video {n} received. Send more or press «Merge».",
+        "merge_processing": "🔗 Merging videos...",
+        "merge_done": "✅ Videos merged!",
+        "merge_need_two": "❌ Need at least 2 videos.",
+        "limit_reset": "🔄 Daily limit reset! {limit} downloads available again.",
         "settings": "⚙️ Settings",
+        "merge": "🔗 Merge videos",
         "settings_title": "⚙️ Profile Settings",
         "theme_toggle": "🎨 Theme: {theme}",
         "theme_light": "☀️ Light",
@@ -329,7 +355,20 @@ TEXTS = {
         "me_empty": "📭 You haven't downloaded anything yet!",
         "menu_title": "🎛 Main menu:",
         "queued": "⏳ You are in queue ({pos}). Please wait...",
+        "preview_loading": "🔍 Getting video info...",
+        "preview_download": "⬇️ Download",
+        "cancel_btn": "❌ Cancel",
+        "preview_cancelled": "❌ Cancelled.",
+        "merge_start": "🎬 Send video files one by one. When done — press «Merge».",
+        "merge_btn": "🔗 Merge",
+        "merge_cancel_btn": "❌ Cancel",
+        "merge_received": "✅ Video {n} received. Send more or press «Merge».",
+        "merge_processing": "🔗 Merging videos...",
+        "merge_done": "✅ Videos merged!",
+        "merge_need_two": "❌ Need at least 2 videos.",
+        "limit_reset": "🔄 Daily limit reset! {limit} downloads available again.",
         "settings": "⚙️ Settings",
+        "merge": "🔗 Merge videos",
         "settings_title": "⚙️ Profile Settings",
         "theme_toggle": "🎨 Theme: {theme}",
         "theme_light": "☀️ Light",
@@ -580,6 +619,7 @@ MENU_LABELS = {
         "sendpatch": "📢 Разослать патч-ноут",
         "share_text": f"Скачиваю видео из TikTok, YouTube и не только! @balerndownloadsbot",
         "settings": "⚙️ Настройки",
+        "merge": "🔗 Объединить видео",
     },
     "en": {
         "download":  "⬇️ Download video",
@@ -594,6 +634,7 @@ MENU_LABELS = {
         "sendpatch": "📢 Send patch note",
         "share_text": f"Download videos from TikTok, YouTube and more! @balerndownloadsbot",
         "settings": "⚙️ Settings",
+        "merge": "🔗 Merge videos",
     },
 }
 
@@ -606,7 +647,8 @@ def main_menu_keyboard(is_admin: bool = False, lang: str = "ru") -> InlineKeyboa
          InlineKeyboardButton(L["patchnote"], callback_data="menu_patchnote")],
         [InlineKeyboardButton(L["help"],      callback_data="menu_help"),
          InlineKeyboardButton(L["lang"],      callback_data="menu_lang")],
-        [InlineKeyboardButton(L["settings"],  callback_data="menu_settings")],
+        [InlineKeyboardButton(L["settings"],  callback_data="menu_settings"),
+         InlineKeyboardButton(L["merge"],     callback_data="menu_merge")],
         [InlineKeyboardButton(L["share"],     switch_inline_query=L["share_text"])],
     ]
     if is_admin:
@@ -795,6 +837,59 @@ def history_keyboard(history: list) -> InlineKeyboardMarkup:
 
 def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
+
+async def ffmpeg_with_progress(cmd: list, status_msg, label: str, duration: float = 0) -> bool:
+    """Запускает ffmpeg и обновляет прогресс-бар в статус-сообщении."""
+    cmd_with_progress = cmd.copy()
+    # Вставляем -progress pipe:1 перед выходным файлом
+    cmd_with_progress = cmd_with_progress[:-1] + ["-progress", "pipe:1", "-nostats", cmd_with_progress[-1]]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd_with_progress,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        last_update = 0
+        last_pct = -1
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            line = line.decode().strip()
+            if line.startswith("out_time_ms=") and duration > 0:
+                try:
+                    ms = int(line.split("=")[1])
+                    pct = min(99, int(ms / 1000000 / duration * 100))
+                    now = asyncio.get_event_loop().time()
+                    if pct != last_pct and now - last_update > 2:
+                        last_pct = pct
+                        last_update = now
+                        bar = make_progress_bar(pct)
+                        try:
+                            await status_msg.edit_text(f"{label}\n{bar}")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+        await proc.wait()
+        return proc.returncode == 0
+    except Exception:
+        # Fallback — обычный запуск без прогресса
+        return ffmpeg_run(cmd)
+
+
+def get_video_duration(path: Path) -> float:
+    """Возвращает длительность видео в секундах."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            capture_output=True, text=True, timeout=15
+        )
+        return float(r.stdout.strip())
+    except Exception:
+        return 0.0
+
 
 def ffmpeg_run(cmd: list) -> bool:
     if not ffmpeg_available():
@@ -1192,15 +1287,15 @@ async def _notify_admin(user, platform, fmt, context):
 
 # ─── safe_edit ────────────────────────────────────────────────────────────────
 
-async def safe_edit(query, text, reply_markup=None):
+async def safe_edit(query, text, reply_markup=None, parse_mode=None):
     try:
-        await query.edit_message_text(text, reply_markup=reply_markup)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
     except Exception:
         try:
-            await query.edit_message_caption(caption=text, reply_markup=reply_markup)
+            await query.edit_message_caption(caption=text, reply_markup=reply_markup, parse_mode=parse_mode)
         except Exception:
             try:
-                await query.message.reply_text(text, reply_markup=reply_markup)
+                await query.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
             except Exception:
                 pass
 
@@ -1588,6 +1683,11 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception:
             await safe_edit(query, t(context, "menu_title"), reply_markup=main_menu_keyboard(is_admin, lang))
 
+    elif action == "merge":
+        context.user_data["merge_files"] = []
+        context.user_data["waiting_merge"] = True
+        await safe_edit(query, t(context, "merge_start"), reply_markup=merge_keyboard(lang))
+
     elif action == "settings":
         theme = context.user_data.get("theme", "light")
         def_fmt = context.user_data.get("default_format", "video")
@@ -1712,6 +1812,41 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     elif action == "unblock_input" and is_admin:
         context.user_data["admin_action"] = "unblock"
         await safe_edit(query, "✅ Введи ID пользователя для разблокировки:")
+
+# ─── Callback: объединение видео ─────────────────────────────────────────────
+
+async def handle_merge_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    lang = get_lang(context)
+
+    if query.data == "merge_do":
+        files = context.user_data.get("merge_files", [])
+        if len(files) < 2:
+            await query.answer(t(context, "merge_need_two"), show_alert=True)
+            return
+        context.user_data["waiting_merge"] = False
+        await safe_edit(query, t(context, "merge_processing"))
+        paths = [DOWNLOAD_DIR / f for f in files]
+        output = DOWNLOAD_DIR / f"merged_{query.from_user.id}.mp4"
+        loop = asyncio.get_event_loop()
+        ok = await loop.run_in_executor(None, merge_videos, paths, output)
+        if ok and output.exists():
+            with open(output, "rb") as f:
+                await query.message.reply_video(video=f, caption=t(context, "merge_done"))
+            output.unlink(missing_ok=True)
+        else:
+            await safe_edit(query, "❌ Не удалось объединить видео.")
+        # Чистим временные файлы
+        for fname in files:
+            try: (DOWNLOAD_DIR / fname).unlink(missing_ok=True)
+            except: pass
+        context.user_data["merge_files"] = []
+
+    elif query.data == "merge_cancel":
+        context.user_data["waiting_merge"] = False
+        context.user_data["merge_files"] = []
+        await safe_edit(query, t(context, "preview_cancelled"))
 
 # ─── Callback: настройки профиля ─────────────────────────────────────────────
 
@@ -2085,6 +2220,21 @@ async def handle_orientation_callback(update: Update, context: ContextTypes.DEFA
             reply_markup=orientation_keyboard(subs_on, speed, get_lang(context))
         )
 
+# ─── Callback: превью ────────────────────────────────────────────────────────
+
+async def handle_preview_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    lang = get_lang(context)
+
+    if query.data == "preview_confirm":
+        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
+                        reply_markup=cancel_keyboard(lang))
+        await _run_download(query.from_user, query.message, context)
+
+    elif query.data == "preview_cancel":
+        await safe_edit(query, t(context, "preview_cancelled"))
+
 # ─── Callback: обрезка ────────────────────────────────────────────────────────
 
 async def handle_trim_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2109,6 +2259,48 @@ async def handle_trim_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
         await safe_edit(query, t(context, "trim_enter_start"))
+
+# ─── Функция объединения видео ───────────────────────────────────────────────
+
+def merge_videos(paths: list[Path], output: Path) -> bool:
+    """Объединяет список видео в одно через ffmpeg concat demuxer."""
+    list_file = output.with_suffix(".txt")
+    with open(list_file, "w") as f:
+        for p in paths:
+            f.write(f"file '{p.absolute()}'\n")
+    cmd = [
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+        "-i", str(list_file),
+        "-c", "copy", str(output)
+    ]
+    ok = ffmpeg_run(cmd)
+    list_file.unlink(missing_ok=True)
+    return ok
+
+
+def merge_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(T.get("merge_btn", "🔗 Объединить"), callback_data="merge_do"),
+         InlineKeyboardButton(T.get("merge_cancel_btn", "❌ Отмена"), callback_data="merge_cancel")],
+    ])
+
+# ─── Callback: скачать ещё раз ───────────────────────────────────────────────
+
+async def handle_download_again_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    lang = get_lang(context)
+    url = context.user_data.get("pending_url")
+    if not url:
+        await query.answer("❌ Ссылка устарела, отправь заново" if lang == "ru" else "❌ Link expired, send again", show_alert=True)
+        return
+    # Запускаем заново с теми же настройками
+    status_msg = await query.message.reply_text(
+        f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
+        reply_markup=cancel_keyboard(lang)
+    )
+    await _run_download(query.from_user, status_msg, context)
 
 # ─── Callback: меню кружочка ──────────────────────────────────────────────────
 
@@ -2145,6 +2337,46 @@ async def handle_cancel_callback(update: Update, context: ContextTypes.DEFAULT_T
     await safe_edit(query, "❌ Загрузка отменена.")
 
 # ─── Финальное скачивание ─────────────────────────────────────────────────────
+
+async def fetch_video_info(url: str) -> dict | None:
+    """Получает метаданные видео без скачивания."""
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
+        "http_headers": {"User-Agent": "com.google.ios.youtube/19.29.1 CFNetwork/1568.100.1 Darwin/24.0.0"},
+        "socket_timeout": 15,
+    }
+    try:
+        loop = asyncio.get_event_loop()
+        def _get():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=False)
+        info = await asyncio.wait_for(loop.run_in_executor(None, _get), timeout=20)
+        return info
+    except Exception as e:
+        logger.warning(f"fetch_video_info error: {e}")
+        return None
+
+
+def format_duration(seconds) -> str:
+    """Форматирует секунды в MM:SS или HH:MM:SS."""
+    try:
+        s = int(seconds)
+        h, m, sec = s // 3600, (s % 3600) // 60, s % 60
+        return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
+    except Exception:
+        return "?"
+
+
+def preview_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(T.get("preview_download", "⬇️ Скачать"), callback_data="preview_confirm"),
+         InlineKeyboardButton(T.get("cancel_btn", "❌ Отмена"), callback_data="preview_cancel")],
+    ])
+
 
 async def _run_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
@@ -2279,17 +2511,30 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
 
         # GIF
         if fmt == "gif":
-            await status_msg.edit_text("🌀 Конвертирую в GIF...")
-            loop = asyncio.get_event_loop()
-            current = await loop.run_in_executor(None, convert_to_gif, current)
+            dur = await asyncio.get_event_loop().run_in_executor(None, get_video_duration, current)
+            output_gif = current.with_suffix(".gif")
+            cmd_gif = [
+                "ffmpeg", "-y", "-i", str(current),
+                "-vf", "fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+                "-loop", "0", str(output_gif)
+            ]
+            await ffmpeg_with_progress(cmd_gif, status_msg, "🌀 Конвертирую в GIF...", dur)
+            current = output_gif if output_gif.exists() else current
             if current not in files_to_clean:
                 files_to_clean.append(current)
 
         # Кружочек
         elif fmt == "circle":
-            await status_msg.edit_text("⭕ Конвертирую в кружочек...")
-            loop = asyncio.get_event_loop()
-            current = await loop.run_in_executor(None, convert_to_circle, current)
+            dur = await asyncio.get_event_loop().run_in_executor(None, get_video_duration, current)
+            output_circle = current.with_stem(current.stem + "_circle").with_suffix(".mp4")
+            cmd_circle = [
+                "ffmpeg", "-y", "-i", str(current),
+                "-vf", "crop=min(iw\,ih):min(iw\,ih),scale=384:384",
+                "-t", "60", "-c:v", "libx264", "-preset", "fast",
+                "-c:a", "aac", "-b:a", "128k", str(output_circle)
+            ]
+            await ffmpeg_with_progress(cmd_circle, status_msg, "⭕ Конвертирую в кружочек...", dur)
+            current = output_circle if output_circle.exists() else current
             if current not in files_to_clean:
                 files_to_clean.append(current)
 
@@ -2313,9 +2558,21 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
 
         # Скорость
         if speed != 1.0 and fmt in ("video", "circle"):
-            await status_msg.edit_text(f"⚡ Применяю скорость {speed}x...")
-            loop = asyncio.get_event_loop()
-            current = await loop.run_in_executor(None, apply_speed, current, speed)
+            dur = await asyncio.get_event_loop().run_in_executor(None, get_video_duration, current)
+            output_speed = current.with_stem(current.stem + "_speed")
+            if speed >= 0.5:
+                atempo = f"atempo={speed}"
+            else:
+                atempo = f"atempo=0.5,atempo={speed/0.5}"
+            cmd_speed = [
+                "ffmpeg", "-y", "-i", str(current),
+                "-vf", f"setpts={1/speed}*PTS",
+                "-af", atempo,
+                "-c:v", "libx264", "-preset", "fast",
+                str(output_speed)
+            ]
+            await ffmpeg_with_progress(cmd_speed, status_msg, f"⚡ Применяю скорость {speed}x...", dur / speed)
+            current = output_speed if output_speed.exists() else current
             if current not in files_to_clean:
                 files_to_clean.append(current)
 
@@ -2371,16 +2628,24 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
         if subs_warning:
             caption += f"\n{subs_warning}"
 
+        # Кнопка "Скачать ещё раз"
+        lang = context.user_data.get("lang", "ru")
+        again_label = "🔄 Скачать ещё раз" if lang == "ru" else "🔄 Download again"
+        again_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(again_label, callback_data="download_again")
+        ]])
+
         # Отправка
         with open(current, "rb") as f:
             if fmt == "audio":
-                await status_msg.reply_audio(audio=f, caption=caption)
+                await status_msg.reply_audio(audio=f, caption=caption, reply_markup=again_kb)
             elif fmt == "gif":
-                await status_msg.reply_animation(animation=f, caption=caption)
+                await status_msg.reply_animation(animation=f, caption=caption, reply_markup=again_kb)
             elif fmt == "circle":
                 await status_msg.reply_video_note(video_note=f)
             else:
-                await status_msg.reply_video(video=f, caption=caption, supports_streaming=True)
+                await status_msg.reply_video(video=f, caption=caption,
+                                             supports_streaming=True, reply_markup=again_kb)
 
         await status_msg.delete()
         update_stats(user.id, platform)
@@ -2401,9 +2666,58 @@ async def _do_download(user, status_msg, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
+# ─── Обработчик видео-файлов (для merge) ────────────────────────────────────
+
+async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Принимает видео-файлы для объединения."""
+    if not context.user_data.get("waiting_merge"):
+        return
+    lang = get_lang(context)
+    video = update.message.video or update.message.document
+    if not video:
+        return
+    # Скачиваем файл
+    try:
+        fname = f"merge_{update.effective_user.id}_{len(context.user_data.get('merge_files', []))}.mp4"
+        file = await context.bot.get_file(video.file_id)
+        dest = DOWNLOAD_DIR / fname
+        await file.download_to_drive(dest)
+        files = context.user_data.setdefault("merge_files", [])
+        files.append(fname)
+        n = len(files)
+        await update.message.reply_text(
+            t(context, "merge_received", n=n),
+            reply_markup=merge_keyboard(lang)
+        )
+    except Exception as e:
+        logger.error(f"merge file download: {e}")
+        await update.message.reply_text("❌ Не удалось получить файл.")
+
 # ─── Запуск ───────────────────────────────────────────────────────────────────
 
 # ─── Фоновые задачи ──────────────────────────────────────────────────────────
+
+async def task_limit_reset_notify(context):
+    """Уведомляет активных пользователей о сбросе лимита в полночь."""
+    logger.info("Сбрасываю лимиты и рассылаю уведомления...")
+    data = get_data()
+    # Сбрасываем лимиты
+    data["downloads_today"] = {}
+    data["last_reset"] = str(date.today())
+    save_data(data)
+    # Уведомляем активных пользователей
+    notified = 0
+    for uid, lang in list(ACTIVE_USERS.items()):
+        try:
+            T = TEXTS.get(lang, TEXTS["ru"])
+            msg = T.get("limit_reset", "🔄 Лимит сброшен! Снова доступно {limit} скачиваний.").format(limit=DAILY_LIMIT)
+            await context.bot.send_message(chat_id=uid, text=msg)
+            notified += 1
+            await asyncio.sleep(0.05)  # не флудим
+        except Exception:
+            pass
+    logger.info(f"Уведомлено {notified} пользователей о сбросе лимита")
+
 
 async def task_ytdlp_update_once(context=None):
     """Обновляет yt-dlp один раз. Вызывается из PTB job_queue."""
@@ -2492,6 +2806,10 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handle_cancel_callback,      pattern="^cancel_download"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_file))
+    app.add_handler(CallbackQueryHandler(handle_preview_callback,       pattern="^preview_"))
+    app.add_handler(CallbackQueryHandler(handle_download_again_callback, pattern="^download_again"))
+    app.add_handler(CallbackQueryHandler(handle_merge_callback,         pattern="^merge_"))
 
     # Регистрируем фоновые задачи через job_queue PTB (корректно завершаются при стопе)
     async def _start_background(app):
@@ -2523,18 +2841,44 @@ def main() -> None:
             first=7 * 24 * 3600,
             name="ytdlp_update"
         )
+        # Сброс лимитов в полночь каждый день
+        from datetime import time as dtime
+        app.job_queue.run_daily(
+            callback=task_limit_reset_notify,
+            time=dtime(hour=0, minute=0, second=0),
+            name="limit_reset"
+        )
         await task_redis_queue()
 
     app.post_init = _pre_init
 
-    # Обработчик ошибок — логируем но не крашимся
+    # Счётчик ошибок для алертов
+    _error_count = {"count": 0, "last_alert": 0}
+
+    # Обработчик ошибок — логируем + алерты при накоплении
     async def error_handler(update, context):
+        import time
         err = context.error
         if "Conflict" in str(err):
             logger.warning("Конфликт polling — возможно запущен второй экземпляр бота. Жду 10 сек...")
             await asyncio.sleep(10)
-        else:
-            logger.error(f"Ошибка: {err}")
+            return
+        logger.error(f"Ошибка: {err}")
+        _error_count["count"] += 1
+        now = time.time()
+        # Алерт если 5+ ошибок за 5 минут
+        if _error_count["count"] >= 5 and now - _error_count["last_alert"] > 300:
+            _error_count["count"] = 0
+            _error_count["last_alert"] = now
+            try:
+                await app.bot.send_message(
+                    ADMIN_ID,
+                    f"⚠️ Бот: {_error_count['count']+5} ошибок за 5 минут!\n"
+                    f"Последняя: <code>{str(err)[:200]}</code>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
 
     app.add_error_handler(error_handler)
 
