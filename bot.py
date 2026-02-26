@@ -60,42 +60,40 @@ def _setup_ffmpeg():
     except Exception as e:
         logging.warning(f"ffmpeg-downloader: {e}")
 
-    # 3. Статическая сборка напрямую
+    # 3. Статическая сборка — распаковка через Python (без xz/tar)
     try:
-        import urllib.request, stat as stat_mod
+        import urllib.request, tarfile, lzma, stat as stat_mod, io
         ffmpeg_dir = Path("/tmp/ffmpeg_bin")
         ffmpeg_dir.mkdir(exist_ok=True)
         ffmpeg_bin  = ffmpeg_dir / "ffmpeg"
         ffprobe_bin = ffmpeg_dir / "ffprobe"
 
         if not ffmpeg_bin.exists() or not ffprobe_bin.exists():
-            logging.info("Скачиваю статический ffmpeg+ffprobe...")
-            # Используем evermeet.cx — надёжный источник статических сборок
-            for name, url in [
-                ("ffmpeg",  "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip"),
-                ("ffprobe", "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"),
-            ]:
-                try:
-                    import zipfile, io
-                    data = urllib.request.urlopen(url, timeout=60).read()
-                    with zipfile.ZipFile(io.BytesIO(data)) as z:
-                        z.extractall(str(ffmpeg_dir))
-                    b = ffmpeg_dir / name
-                    if b.exists():
-                        b.chmod(b.stat().st_mode | stat_mod.S_IEXEC | stat_mod.S_IXGRP | stat_mod.S_IXOTH)
-                        logging.info(f"✅ {name} скачан")
-                except Exception as ex:
-                    logging.warning(f"evermeet {name}: {ex}")
+            logging.info("Скачиваю ffmpeg+ffprobe (Python tar+lzma)...")
+            url = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
+            data = urllib.request.urlopen(url, timeout=120).read()
+            # Распаковываем через Python — не нужен системный xz
+            with lzma.open(io.BytesIO(data)) as lzf:
+                with tarfile.open(fileobj=lzf) as tf:
+                    for member in tf.getmembers():
+                        fname = Path(member.name).name
+                        if fname in ("ffmpeg", "ffprobe"):
+                            member.name = fname  # без директорий
+                            tf.extract(member, path=str(ffmpeg_dir))
+                            extracted = ffmpeg_dir / fname
+                            if extracted.exists():
+                                extracted.chmod(extracted.stat().st_mode | stat_mod.S_IEXEC | stat_mod.S_IXGRP | stat_mod.S_IXOTH)
+                                logging.info(f"✅ {fname} извлечён")
 
         if ffmpeg_bin.exists() and ffprobe_bin.exists():
             _set_location(str(ffmpeg_dir))
-            logging.info(f"✅ ffmpeg+ffprobe из статики: {ffmpeg_dir}")
+            logging.info(f"✅ ffmpeg+ffprobe готовы: {ffmpeg_dir}")
             return
         else:
             files = list(ffmpeg_dir.iterdir()) if ffmpeg_dir.exists() else []
-            logging.warning(f"Статика: бинарники не найдены, файлы: {files}")
+            logging.warning(f"Бинарники не найдены, файлы: {files}")
     except Exception as e:
-        logging.warning(f"статический ffmpeg: {e}")
+        logging.warning(f"статический ffmpeg (lzma): {e}")
 
     # 3. nix store (Railway)
     results = glob_module.glob("/nix/store/*/bin/ffmpeg")
