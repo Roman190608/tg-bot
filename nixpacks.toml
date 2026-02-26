@@ -1,4 +1,2 @@
-python-telegram-bot[job-queue]==21.5
-yt-dlp>=2024.1.1
-redis==5.2.1
-mutagen
+[phases.setup]
+aptPkgs = ["ffmpeg"]
