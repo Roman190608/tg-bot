@@ -21,80 +21,72 @@ import yt_dlp
 
 # ─── ffmpeg ───────────────────────────────────────────────────────────────────
 
+FFMPEG_LOCATION: str = ""  # путь к директории с ffmpeg, заполняется при старте
+
 def _setup_ffmpeg():
-    # 1. Уже в системе
-    if shutil.which("ffmpeg"):
-        logging.info("ffmpeg найден в системе")
+    global FFMPEG_LOCATION
+
+    def _set_location(directory: str):
+        global FFMPEG_LOCATION
+        os.environ["PATH"] = directory + os.pathsep + os.environ.get("PATH", "")
+        FFMPEG_LOCATION = directory
+
+    # 1. Уже в системе — проверяем что есть и ffmpeg и ffprobe
+    if shutil.which("ffmpeg") and shutil.which("ffprobe"):
+        loc = str(Path(shutil.which("ffmpeg")).parent)
+        _set_location(loc)
+        logging.info(f"ffmpeg+ffprobe найдены в системе: {loc}")
         return
 
-    # 2. imageio-ffmpeg (pip пакет — скачивает ffmpeg автоматически)
+    # 2. Статическая сборка от yt-dlp (ffmpeg + ffprobe в одном архиве)
     try:
-        try:
-            import imageio_ffmpeg
-        except ImportError:
-            logging.info("Устанавливаю imageio-ffmpeg...")
+        import urllib.request, stat as stat_mod
+        ffmpeg_dir = Path("/tmp/ffmpeg_bin")
+        ffmpeg_dir.mkdir(exist_ok=True)
+        ffmpeg_bin  = ffmpeg_dir / "ffmpeg"
+        ffprobe_bin = ffmpeg_dir / "ffprobe"
+
+        if not ffmpeg_bin.exists() or not ffprobe_bin.exists():
+            logging.info("Скачиваю статический ffmpeg+ffprobe...")
+            url = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
+            archive = ffmpeg_dir / "ffmpeg.tar.xz"
+            urllib.request.urlretrieve(url, archive)
             subprocess.run(
-                [sys.executable, "-m", "pip", "install", "imageio-ffmpeg", "-q"],
-                check=True, timeout=60
+                ["tar", "-xf", str(archive), "-C", str(ffmpeg_dir),
+                 "--strip-components=2", "--wildcards", "*/bin/ffmpeg", "*/bin/ffprobe"],
+                check=True, timeout=120
             )
-            import imageio_ffmpeg
-        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-        parent = str(Path(ffmpeg_path).parent)
-        os.environ["PATH"] = parent + os.pathsep + os.environ.get("PATH", "")
-        # ffprobe — создаём копию если нет
-        if not shutil.which("ffprobe"):
-            ffprobe = Path(parent) / "ffprobe"
-            if not ffprobe.exists():
-                import shutil as _sh
-                _sh.copy2(ffmpeg_path, str(ffprobe))
-                ffprobe.chmod(0o755)
-        logging.info(f"ffmpeg найден через imageio-ffmpeg: {ffmpeg_path}")
-        return
+            archive.unlink(missing_ok=True)
+            for b in [ffmpeg_bin, ffprobe_bin]:
+                if b.exists():
+                    b.chmod(b.stat().st_mode | stat_mod.S_IEXEC | stat_mod.S_IXGRP | stat_mod.S_IXOTH)
+
+        if ffmpeg_bin.exists() and ffprobe_bin.exists():
+            _set_location(str(ffmpeg_dir))
+            logging.info(f"✅ ffmpeg+ffprobe установлены: {ffmpeg_dir}")
+            return
+        else:
+            logging.warning(f"Архив распакован, но бинарники не найдены: {list(ffmpeg_dir.iterdir())}")
     except Exception as e:
-        logging.warning(f"imageio-ffmpeg: {e}")
+        logging.warning(f"статический ffmpeg: {e}")
 
     # 3. nix store (Railway)
     results = glob_module.glob("/nix/store/*/bin/ffmpeg")
     if results:
-        os.environ["PATH"] = str(Path(results[0]).parent) + os.pathsep + os.environ.get("PATH", "")
+        _set_location(str(Path(results[0]).parent))
         logging.info(f"ffmpeg найден в nix store: {results[0]}")
         return
 
-    # 4. apt-get (если есть права)
+    # 4. apt-get (если есть root)
     try:
-        r = subprocess.run(["apt-get", "install", "-y", "-q", "ffmpeg"],
-                           capture_output=True, timeout=120)
+        subprocess.run(["apt-get", "install", "-y", "-q", "ffmpeg"],
+                       capture_output=True, timeout=120)
         if shutil.which("ffmpeg"):
+            _set_location(str(Path(shutil.which("ffmpeg")).parent))
             logging.info("ffmpeg установлен через apt-get")
             return
     except Exception as e:
         logging.warning(f"apt-get: {e}")
-
-    # 5. Скачиваем статический бинарник ffmpeg (последний вариант)
-    try:
-        import urllib.request, stat
-        ffmpeg_dir = Path("/tmp/ffmpeg_bin")
-        ffmpeg_dir.mkdir(exist_ok=True)
-        ffmpeg_bin = ffmpeg_dir / "ffmpeg"
-        ffprobe_bin = ffmpeg_dir / "ffprobe"
-        if not ffmpeg_bin.exists():
-            logging.info("Скачиваю статический ffmpeg...")
-            url = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
-            archive = ffmpeg_dir / "ffmpeg.tar.xz"
-            urllib.request.urlretrieve(url, archive)
-            subprocess.run(["tar", "-xf", str(archive), "-C", str(ffmpeg_dir),
-                           "--strip-components=2", "--wildcards", "*/bin/ffmpeg", "*/bin/ffprobe"],
-                          check=True, timeout=60)
-            archive.unlink(missing_ok=True)
-            for b in [ffmpeg_bin, ffprobe_bin]:
-                if b.exists():
-                    b.chmod(b.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-        if ffmpeg_bin.exists():
-            os.environ["PATH"] = str(ffmpeg_dir) + os.pathsep + os.environ.get("PATH", "")
-            logging.info(f"ffmpeg установлен из статического бинарника: {ffmpeg_bin}")
-            return
-    except Exception as e:
-        logging.warning(f"статический ffmpeg: {e}")
 
     logging.error("ffmpeg НЕ НАЙДЕН!")
 
@@ -1302,6 +1294,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
                 "player_client": ["ios", "android", "web"],
             }
         },
+        **({"ffmpeg_location": FFMPEG_LOCATION} if FFMPEG_LOCATION else {}),
     }
 
     # audio_codec передаётся как параметр
