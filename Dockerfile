@@ -12,6 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY bot.py .
+COPY menu_light.png menu_dark.png welcome.gif ./
 
 # Создаём директорию для загрузок
 RUN mkdir -p /app/downloads
