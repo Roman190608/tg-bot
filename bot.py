@@ -38,7 +38,29 @@ def _setup_ffmpeg():
         logging.info(f"ffmpeg+ffprobe найдены в системе: {loc}")
         return
 
-    # 2. Статическая сборка от yt-dlp (ffmpeg + ffprobe в одном архиве)
+    # 2. ffmpeg-downloader — качает ffmpeg+ffprobe автоматически
+    try:
+        try:
+            import ffmpeg_downloader as ffdl
+        except ImportError:
+            logging.info("Устанавливаю ffmpeg-downloader...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "ffmpeg-downloader", "-q"],
+                           check=True, timeout=60)
+            import ffmpeg_downloader as ffdl
+
+        ffmpeg_dir = Path(ffdl.ffmpeg_dir)
+        if not (ffmpeg_dir / "ffmpeg").exists():
+            logging.info("Скачиваю ffmpeg+ffprobe через ffmpeg-downloader...")
+            ffdl.download_ffmpeg()
+
+        if (ffmpeg_dir / "ffmpeg").exists():
+            _set_location(str(ffmpeg_dir))
+            logging.info(f"✅ ffmpeg+ffprobe через ffmpeg-downloader: {ffmpeg_dir}")
+            return
+    except Exception as e:
+        logging.warning(f"ffmpeg-downloader: {e}")
+
+    # 3. Статическая сборка напрямую
     try:
         import urllib.request, stat as stat_mod
         ffmpeg_dir = Path("/tmp/ffmpeg_bin")
@@ -48,25 +70,30 @@ def _setup_ffmpeg():
 
         if not ffmpeg_bin.exists() or not ffprobe_bin.exists():
             logging.info("Скачиваю статический ffmpeg+ffprobe...")
-            url = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
-            archive = ffmpeg_dir / "ffmpeg.tar.xz"
-            urllib.request.urlretrieve(url, archive)
-            subprocess.run(
-                ["tar", "-xf", str(archive), "-C", str(ffmpeg_dir),
-                 "--strip-components=2", "--wildcards", "*/bin/ffmpeg", "*/bin/ffprobe"],
-                check=True, timeout=120
-            )
-            archive.unlink(missing_ok=True)
-            for b in [ffmpeg_bin, ffprobe_bin]:
-                if b.exists():
-                    b.chmod(b.stat().st_mode | stat_mod.S_IEXEC | stat_mod.S_IXGRP | stat_mod.S_IXOTH)
+            # Используем evermeet.cx — надёжный источник статических сборок
+            for name, url in [
+                ("ffmpeg",  "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip"),
+                ("ffprobe", "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"),
+            ]:
+                try:
+                    import zipfile, io
+                    data = urllib.request.urlopen(url, timeout=60).read()
+                    with zipfile.ZipFile(io.BytesIO(data)) as z:
+                        z.extractall(str(ffmpeg_dir))
+                    b = ffmpeg_dir / name
+                    if b.exists():
+                        b.chmod(b.stat().st_mode | stat_mod.S_IEXEC | stat_mod.S_IXGRP | stat_mod.S_IXOTH)
+                        logging.info(f"✅ {name} скачан")
+                except Exception as ex:
+                    logging.warning(f"evermeet {name}: {ex}")
 
         if ffmpeg_bin.exists() and ffprobe_bin.exists():
             _set_location(str(ffmpeg_dir))
-            logging.info(f"✅ ffmpeg+ffprobe установлены: {ffmpeg_dir}")
+            logging.info(f"✅ ffmpeg+ffprobe из статики: {ffmpeg_dir}")
             return
         else:
-            logging.warning(f"Архив распакован, но бинарники не найдены: {list(ffmpeg_dir.iterdir())}")
+            files = list(ffmpeg_dir.iterdir()) if ffmpeg_dir.exists() else []
+            logging.warning(f"Статика: бинарники не найдены, файлы: {files}")
     except Exception as e:
         logging.warning(f"статический ffmpeg: {e}")
 
@@ -1285,6 +1312,7 @@ async def download_video(url, quality, output_path, status_msg, cancel_flag, fmt
         "merge_output_format": "mp4" if fmt not in ("audio",) else None,
         "quiet": True,
         "no_warnings": True,
+        "ffmpeg_location": FFMPEG_LOCATION or None,
         "progress_hooks": [progress_hook],
         "http_headers": {"User-Agent": "com.google.ios.youtube/19.29.1 CFNetwork/1568.100.1 Darwin/24.0.0"},
         "cookiefile": "cookies.txt" if Path("cookies.txt").exists() else None,
@@ -1397,6 +1425,7 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag, 
         "merge_output_format": "mp4",
         "quiet": True,
         "no_warnings": True,
+        "ffmpeg_location": FFMPEG_LOCATION or None,
         "progress_hooks": [progress_hook],
         "noplaylist": False,
         "playlistend": 20,
@@ -2784,6 +2813,7 @@ async def fetch_video_info(url: str) -> dict | None:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
+        "ffmpeg_location": FFMPEG_LOCATION or None,
         "skip_download": True,
         "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
         "http_headers": {"User-Agent": "com.google.ios.youtube/19.29.1 CFNetwork/1568.100.1 Darwin/24.0.0"},
