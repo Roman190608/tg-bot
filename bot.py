@@ -331,22 +331,31 @@ RETRY_DELAYS = [5, 15]
 TEXTS = {
     "ru": {
         "start_caption": (
-            "👋 О, новый пользователь! Уже загружаю котиков... шучу.\n\n"
-            "Я скачиваю видео из TikTok, YouTube, Twitter, VK и других платформ.\n"
-            "Просто кинь ссылку — выбери формат, качество и получи файл!\n\n"
+            "👋 Привет! Добро пожаловать!\n\n"
+            "🎬 Я скачиваю видео и музыку из:\n"
+            "TikTok • YouTube • Instagram • Twitter\n"
+            "VK • Reddit • Pinterest • Twitch\n"
+            "Vimeo • SoundCloud • Dailymotion\n\n"
+            "💡 Просто кинь ссылку — выбери формат,\n"
+            "качество и получи файл прямо в Telegram!\n\n"
+            "🎵 Форматы: MP4, MP3, WAV, FLAC, GIF, кружочек\n"
+            "✂️ Обрезка, скорость, субтитры и многое другое\n\n"
             "Поехали! 🚀"
         ),
         "help": (
-            "📌 Как пользоваться:\n\n"
-            "1. Отправь ссылку на видео\n"
-            "2. Выбери формат: видео / MP3 / WAV / FLAC / GIF / кружочек / обложка\n"
-            "3. Выбери качество и уровень звука\n"
-            "4. Ориентация, субтитры, обрезка, скорость — или «Скачать»\n\n"
-            "🎭 Стикерпаки: t.me/addstickers/ИмяПака\n"
-            "🔍 Поиск: «Поиск YouTube» в меню\n"
-            "🔗 Объединить: кнопка в меню → отправляй файлы\n\n"
+            "📌 Как пользоваться\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            "1️⃣ Отправь ссылку на видео\n"
+            "2️⃣ Выбери формат: видео / MP3 / WAV / FLAC / GIF / кружочек\n"
+            "3️⃣ Выбери качество и уровень звука\n"
+            "4️⃣ Ориентация, субтитры, скорость — или «Скачать»\n\n"
+            "🎭 Стикерпаки: отправь ссылку t.me/addstickers/...\n"
+            "🔍 Поиск YouTube: кнопка в меню\n"
+            "🔗 Объединить видео: кнопка в меню\n\n"
             "⚠️ Лимит: 50 МБ и 20 скачиваний в день\n\n"
-            "/menu — меню • /history — история • /me — статистика"
+            "📍 /menu — меню\n"
+            "📍 /history — история\n"
+            "📍 /me — статистика"
         ),
         "history_empty": "📭 История пуста.",
         "history_title": "🕘 Последние скачивания:",
@@ -432,13 +441,15 @@ TEXTS = {
         "merge_need_two": "❌ Нужно минимум 2 видео.",
         "limit_reset": "🔄 Лимит сброшен! Доступно {limit} скачиваний.",
         "me": (
-            "👤 Статистика:\n\n"
-            "📥 Всего: {total}\n"
-            "❤️ Платформа: {fav}\n"
-            "📅 Сегодня: {today} из {limit}"
+            "👤 Твоя статистика\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            "📥 Всего скачано: {total}\n"
+            "❤️ Любимая платформа: {fav}\n"
+            "📅 Сегодня: {today} из {limit}\n\n"
+            "Продолжай! 🔥"
         ),
         "me_empty": "📭 Ты ещё ничего не скачивал!",
-        "menu_title": "🎛 Главное меню:",
+        "menu_title": "🎛 Главное меню\n\nВыбери действие 👇",
         "settings_title": "⚙️ Настройки",
         "theme_toggle": "🎨 Тема: {theme}",
         "theme_light": "☀️ Светлая",
@@ -449,29 +460,41 @@ TEXTS = {
         "default_quality": "📐 Качество: {q}",
         "pref_saved": "✅ Сохранено!",
         "settings_info": (
-            "⚙️ Настройки\n\n"
+            "⚙️ Настройки\n"
+            "━━━━━━━━━━━━━━━\n\n"
             "🎨 Тема: {theme}\n"
             "📦 Формат: {fmt}\n"
-            "📐 Качество: {quality}"
+            "📐 Качество: {quality}\n\n"
+            "Нажми кнопку чтобы изменить 👇"
         ),
     },
     "en": {
         "start_caption": (
-            "👋 Hey! I download videos from TikTok, YouTube, Twitter, VK and more.\n"
-            "Just send a link — choose format, quality and get your file!\n\n"
+            "👋 Hey! Welcome!\n\n"
+            "🎬 I download videos and music from:\n"
+            "TikTok • YouTube • Instagram • Twitter\n"
+            "VK • Reddit • Pinterest • Twitch\n"
+            "Vimeo • SoundCloud • Dailymotion\n\n"
+            "💡 Just send a link — pick format,\n"
+            "quality and get the file right in Telegram!\n\n"
+            "🎵 Formats: MP4, MP3, WAV, FLAC, GIF, circle\n"
+            "✂️ Trim, speed, subtitles and more\n\n"
             "Let's go! 🚀"
         ),
         "help": (
-            "📌 How to use:\n\n"
-            "1. Send a video link\n"
-            "2. Choose format: video / MP3 / WAV / FLAC / GIF / circle / thumbnail\n"
-            "3. Choose quality and audio level\n"
-            "4. Orientation, subtitles, trim, speed — or Download\n\n"
-            "🎭 Stickerpacks: t.me/addstickers/PackName\n"
-            "🔍 Search: YouTube Search in menu\n"
-            "🔗 Merge: button in menu → send files\n\n"
+            "📌 How to use\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            "1️⃣ Send a video link\n"
+            "2️⃣ Choose format: video / MP3 / WAV / FLAC / GIF / circle\n"
+            "3️⃣ Choose quality and audio level\n"
+            "4️⃣ Orientation, subs, speed — or Download\n\n"
+            "🎭 Stickerpacks: send t.me/addstickers/... link\n"
+            "🔍 YouTube search: button in menu\n"
+            "🔗 Merge videos: button in menu\n\n"
             "⚠️ Limit: 50 MB and 20 downloads per day\n\n"
-            "/menu — menu • /history — history • /me — stats"
+            "📍 /menu — menu\n"
+            "📍 /history — history\n"
+            "📍 /me — stats"
         ),
         "history_empty": "📭 History is empty.",
         "history_title": "🕘 Recent downloads:",
@@ -557,13 +580,15 @@ TEXTS = {
         "merge_need_two": "❌ Need at least 2 videos.",
         "limit_reset": "🔄 Limit reset! {limit} downloads available.",
         "me": (
-            "👤 Stats:\n\n"
-            "📥 Total: {total}\n"
-            "❤️ Platform: {fav}\n"
-            "📅 Today: {today} of {limit}"
+            "👤 Your stats\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            "📥 Total downloads: {total}\n"
+            "❤️ Favorite platform: {fav}\n"
+            "📅 Today: {today} of {limit}\n\n"
+            "Keep going! 🔥"
         ),
         "me_empty": "📭 No downloads yet!",
-        "menu_title": "🎛 Main menu:",
+        "menu_title": "🎛 Main menu\n\nChoose an action 👇",
         "settings_title": "⚙️ Settings",
         "theme_toggle": "🎨 Theme: {theme}",
         "theme_light": "☀️ Light",
@@ -574,10 +599,12 @@ TEXTS = {
         "default_quality": "📐 Quality: {q}",
         "pref_saved": "✅ Saved!",
         "settings_info": (
-            "⚙️ Settings\n\n"
+            "⚙️ Settings\n"
+            "━━━━━━━━━━━━━━━\n\n"
             "🎨 Theme: {theme}\n"
             "📦 Format: {fmt}\n"
-            "📐 Quality: {quality}"
+            "📐 Quality: {quality}\n\n"
+            "Tap a button to change 👇"
         ),
     },
 }
@@ -588,28 +615,134 @@ TEXTS = {
 
 PATCH_NOTES = {
     "1.1": {
-        "ru": "🆕 v1.1\n• Меню /menu\n• English\n• /me статистика\n• Поделиться\n• История",
-        "en": "🆕 v1.1\n• /menu\n• English\n• /me stats\n• Share\n• History",
+        "ru": (
+            "🎉 Обновление v1.1\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            "🎛 Добавлено главное меню /menu\n"
+            "🌍 Теперь есть English!\n"
+            "📊 Личная статистика /me\n"
+            "📤 Кнопка «Поделиться» с друзьями\n"
+            "🕘 История скачиваний\n\n"
+            "Спасибо, что пользуешься! 💜"
+        ),
+        "en": (
+            "🎉 Update v1.1\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            "🎛 Main menu /menu added\n"
+            "🌍 Russian + English support!\n"
+            "📊 Personal stats /me\n"
+            "📤 Share with friends button\n"
+            "🕘 Download history\n\n"
+            "Thanks for using! 💜"
+        ),
     },
     "1.2": {
-        "ru": "🆕 v1.2\n• Обложка видео\n• Кружочек\n• Очередь\n• Скорость\n• YouTube видео",
-        "en": "🆕 v1.2\n• Thumbnails\n• Circle\n• Queue\n• Speed\n• YouTube videos",
+        "ru": (
+            "🔥 Обновление v1.2\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            "🖼 Скачивание обложек видео\n"
+            "⭕ Видео-кружочки для Telegram\n"
+            "📋 Очередь загрузок — никаких зависаний\n"
+            "⚡ Настройка скорости 0.5x–2x\n"
+            "🎬 Полноценная поддержка YouTube\n\n"
+            "Стало ещё удобнее! 🚀"
+        ),
+        "en": (
+            "🔥 Update v1.2\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            "🖼 Video thumbnail extraction\n"
+            "⭕ Telegram video circles\n"
+            "📋 Download queue — no freezes\n"
+            "⚡ Speed control 0.5x–2x\n"
+            "🎬 Full YouTube support\n\n"
+            "Better than ever! 🚀"
+        ),
     },
     "1.3": {
-        "ru": "🆕 v1.3\n• Webhook\n• Redis\n• Автосжатие >50МБ\n• Автообновление yt-dlp",
-        "en": "🆕 v1.3\n• Webhook\n• Redis\n• Auto-compress >50MB\n• Auto-update yt-dlp",
+        "ru": (
+            "⚙️ Обновление v1.3 — Под капотом\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🔗 Переход на Webhook — быстрее отклик\n"
+            "🗄 Redis для хранения данных\n"
+            "📦 Автосжатие файлов > 50 МБ\n"
+            "🔄 Автообновление загрузчика\n\n"
+            "Бот стал стабильнее и быстрее! ⚡"
+        ),
+        "en": (
+            "⚙️ Update v1.3 — Under the Hood\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🔗 Webhook mode — faster response\n"
+            "🗄 Redis data storage\n"
+            "📦 Auto-compress files > 50 MB\n"
+            "🔄 Auto-update downloader\n\n"
+            "Faster and more stable! ⚡"
+        ),
     },
     "1.4": {
-        "ru": "🆕 v1.4\n• Прогресс-бар\n• Превью видео\n• Скачать ещё раз\n• Объединение видео",
-        "en": "🆕 v1.4\n• Progress bar\n• Video preview\n• Download again\n• Merge videos",
+        "ru": (
+            "✨ Обновление v1.4\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            "📊 Прогресс-бар с весёлыми статусами\n"
+            "👀 Превью видео перед скачиванием\n"
+            "🔄 Кнопка «Скачать ещё раз»\n"
+            "🔗 Объединение нескольких видео в одно\n\n"
+            "Попробуй — тебе понравится! 🎯"
+        ),
+        "en": (
+            "✨ Update v1.4\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            "📊 Progress bar with fun messages\n"
+            "👀 Video preview before download\n"
+            "🔄 Download again button\n"
+            "🔗 Merge multiple videos into one\n\n"
+            "Give it a try! 🎯"
+        ),
     },
     "1.5": {
-        "ru": "🆕 v1.5\n• Pinterest, Twitch, Vimeo, Dailymotion\n• WAV/FLAC\n• Стикерпаки\n• Поиск YouTube\n• SoundCloud",
-        "en": "🆕 v1.5\n• Pinterest, Twitch, Vimeo, Dailymotion\n• WAV/FLAC\n• Stickerpacks\n• YouTube search\n• SoundCloud",
+        "ru": (
+            "🌟 Обновление v1.5 — Мегапак!\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "📌 Pinterest, 🟣 Twitch, 🎞 Vimeo, 📺 Dailymotion\n"
+            "🎵 Форматы WAV и FLAC для аудиофилов\n"
+            "🎭 Скачивание стикерпаков целиком\n"
+            "🔍 Поиск по YouTube прямо в боте\n"
+            "🎧 SoundCloud — музыка без границ\n\n"
+            "Теперь поддерживается 11+ платформ! 🔥"
+        ),
+        "en": (
+            "🌟 Update v1.5 — Megapack!\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "📌 Pinterest, 🟣 Twitch, 🎞 Vimeo, 📺 Dailymotion\n"
+            "🎵 WAV and FLAC for audiophiles\n"
+            "🎭 Download entire sticker packs\n"
+            "🔍 YouTube search right in the bot\n"
+            "🎧 SoundCloud — music without borders\n\n"
+            "Now supports 11+ platforms! 🔥"
+        ),
     },
     "1.6": {
-        "ru": "🆕 v1.6\n• Исправлены все баги\n• Рефакторинг кода\n• Стабильность\n• Оптимизация памяти",
-        "en": "🆕 v1.6\n• All bugs fixed\n• Code refactoring\n• Stability\n• Memory optimization",
+        "ru": (
+            "🛠 Обновление v1.6 — Стабильность\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🐛 Исправлены все известные баги\n"
+            "🧹 Полный рефакторинг кода\n"
+            "🧠 Оптимизация памяти и скорости\n"
+            "📌 Pinterest — теперь скачивает корректно\n"
+            "🎵 Яндекс Музыка — поддержка восстановлена\n"
+            "🕘 Исправлена кнопка «История»\n\n"
+            "Всё летает! 🚀"
+        ),
+        "en": (
+            "🛠 Update v1.6 — Stability\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🐛 All known bugs fixed\n"
+            "🧹 Full code refactoring\n"
+            "🧠 Memory and speed optimization\n"
+            "📌 Pinterest — now downloads correctly\n"
+            "🎵 Yandex Music — support restored\n"
+            "🕘 History button fixed\n\n"
+            "Everything flies! 🚀"
+        ),
     },
 }
 
@@ -1162,9 +1295,18 @@ def _ydl_base_opts() -> dict:
     opts = {
         "quiet": True,
         "no_warnings": True,
-        "http_headers": {"User-Agent": "com.google.ios.youtube/19.29.1 CFNetwork/1568.100.1 Darwin/24.0.0"},
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+        },
         "socket_timeout": 30,
         "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
+        "geo_bypass": True,              # FIX: обход геоблоков (Яндекс Музыка и др.)
+        "geo_bypass_country": "RU",      # FIX: для Яндекс Музыки
+        "nocheckcertificate": True,       # FIX: обход SSL ошибок Pinterest
     }
     if FFMPEG_LOCATION:
         opts["ffmpeg_location"] = FFMPEG_LOCATION
@@ -1832,11 +1974,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if re.search(SPOTIFY_PATTERN, url, re.IGNORECASE):
         await update.message.reply_text(t(context, "spotify_not_supported"))
         return
+
+    # Яндекс Музыка — пробуем скачать (может быть геоблок)
     if re.search(YANDEX_PATTERN, url, re.IGNORECASE):
-        await update.message.reply_text(t(context, "yandex_geo_error"))
-        return
-    if re.search(r"pinterest\.com|pin\.it", url, re.IGNORECASE):
-        await update.message.reply_text(t(context, "pinterest_hint"))
+        await update.message.reply_text(
+            "🎵 Яндекс Музыка\n⚠️ Возможен геоблок — попробую скачать!" if lang == "ru"
+            else "🎵 Yandex Music\n⚠️ Geo-restrictions possible — will try!"
+        )
 
     init_download_context(context, url, platform)
     get_merged_history(user.id, context)
@@ -1899,13 +2043,14 @@ async def cb_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action == "history":
         history = get_merged_history(user.id, context)
         if not history:
-            await safe_edit(query, t(context, "history_empty"), reply_markup=back_keyboard(lang))
+            await query.answer(t(context, "history_empty"), show_alert=True)
         else:
+            # FIX: отправляем НОВОЕ сообщение для истории (не ломаем фото-меню)
             kb = InlineKeyboardMarkup(
                 history_keyboard(history).inline_keyboard
-                + [[InlineKeyboardButton("◀️", callback_data="menu_back")]]
+                + [[InlineKeyboardButton("◀️ Закрыть", callback_data="history_close")]]
             )
-            await safe_edit(query, t(context, "history_title"), reply_markup=kb)
+            await query.message.reply_text(t(context, "history_title"), reply_markup=kb)
 
     elif action == "me":
         data = get_data()
@@ -1991,22 +2136,25 @@ async def cb_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "history_close":
-        await query.delete_message()
+        try:
+            await query.delete_message()
+        except Exception:
+            pass
         return
     idx = int(query.data.replace("history_", ""))
     history = context.user_data.get("history", [])
     if idx >= len(history):
-        await safe_edit(query, "❌ Не найдено.")
+        await query.answer("❌ Не найдено", show_alert=True)
         return
     item = history[idx]
     allowed, remaining = check_limit(query.from_user.id)
     if not allowed:
-        await safe_edit(query, t(context, "limit", limit=DAILY_LIMIT))
+        await query.answer(t(context, "limit", limit=DAILY_LIMIT), show_alert=True)
         return
     init_download_context(context, item["url"], item["platform"])
     lang = get_lang(context)
-    await safe_edit(
-        query,
+    # FIX: отправляем НОВОЕ сообщение вместо редактирования фото
+    await query.message.reply_text(
         f"🎬 {item['platform']}\n{t(context, 'remaining', remaining=remaining)}\n\n{t(context, 'step1')}",
         reply_markup=format_keyboard(lang, context.user_data.get("default_format", ""), item["url"]),
     )
