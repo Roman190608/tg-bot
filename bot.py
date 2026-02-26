@@ -38,29 +38,7 @@ def _setup_ffmpeg():
         logging.info(f"ffmpeg+ffprobe найдены в системе: {loc}")
         return
 
-    # 2. ffmpeg-downloader — качает ffmpeg+ffprobe автоматически
-    try:
-        try:
-            import ffmpeg_downloader as ffdl
-        except ImportError:
-            logging.info("Устанавливаю ffmpeg-downloader...")
-            subprocess.run([sys.executable, "-m", "pip", "install", "ffmpeg-downloader", "-q"],
-                           check=True, timeout=60)
-            import ffmpeg_downloader as ffdl
-
-        ffmpeg_dir = Path(ffdl.ffmpeg_dir)
-        if not (ffmpeg_dir / "ffmpeg").exists():
-            logging.info("Скачиваю ffmpeg+ffprobe через ffmpeg-downloader...")
-            ffdl.download_ffmpeg()
-
-        if (ffmpeg_dir / "ffmpeg").exists():
-            _set_location(str(ffmpeg_dir))
-            logging.info(f"✅ ffmpeg+ffprobe через ffmpeg-downloader: {ffmpeg_dir}")
-            return
-    except Exception as e:
-        logging.warning(f"ffmpeg-downloader: {e}")
-
-    # 3. Статическая сборка — распаковка через Python (без xz/tar)
+    # 2. Статическая сборка — распаковка через Python (без xz/tar)
     try:
         import urllib.request, tarfile, lzma, stat as stat_mod, io
         ffmpeg_dir = Path("/tmp/ffmpeg_bin")
@@ -69,7 +47,7 @@ def _setup_ffmpeg():
         ffprobe_bin = ffmpeg_dir / "ffprobe"
 
         if not ffmpeg_bin.exists() or not ffprobe_bin.exists():
-            logging.info("Скачиваю ffmpeg+ffprobe (Python tar+lzma)...")
+            logging.info("Скачиваю ffmpeg+ffprobe (~90MB, пожалуйста подождите)...")
             url = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
             data = urllib.request.urlopen(url, timeout=120).read()
             # Распаковываем через Python — не нужен системный xz
@@ -77,13 +55,13 @@ def _setup_ffmpeg():
                 with tarfile.open(fileobj=lzf) as tf:
                     for member in tf.getmembers():
                         fname = Path(member.name).name
-                        if fname in ("ffmpeg", "ffprobe"):
-                            member.name = fname  # без директорий
-                            tf.extract(member, path=str(ffmpeg_dir))
-                            extracted = ffmpeg_dir / fname
-                            if extracted.exists():
-                                extracted.chmod(extracted.stat().st_mode | stat_mod.S_IEXEC | stat_mod.S_IXGRP | stat_mod.S_IXOTH)
-                                logging.info(f"✅ {fname} извлечён")
+                        if fname in ("ffmpeg", "ffprobe") and member.isfile():
+                            src = tf.extractfile(member)
+                            if src:
+                                dest = ffmpeg_dir / fname
+                                dest.write_bytes(src.read())
+                                dest.chmod(dest.stat().st_mode | stat_mod.S_IEXEC | stat_mod.S_IXGRP | stat_mod.S_IXOTH)
+                                logging.info(f"✅ {fname} извлечён ({dest.stat().st_size // 1024 // 1024}MB)")
 
         if ffmpeg_bin.exists() and ffprobe_bin.exists():
             _set_location(str(ffmpeg_dir))
