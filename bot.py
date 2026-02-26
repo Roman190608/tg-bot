@@ -48,9 +48,9 @@ DATA_FILE    = DATA_DIR / "data.json"
 REDIS_URL    = os.environ.get("REDIS_URL")
 
 # Фото меню
-MENU_PHOTO_LIGHT = os.environ.get("MENU_PHOTO_LIGHT", "https://i.imgur.com/4M34hi2.png")
-MENU_PHOTO_DARK  = os.environ.get("MENU_PHOTO_DARK",  "https://i.imgur.com/4M34hi2.png")
-MENU_GIF_URL     = os.environ.get("MENU_GIF_URL", "")
+MENU_PHOTO_LIGHT = Path(__file__).parent / "menu_light.png"
+MENU_PHOTO_DARK  = Path(__file__).parent / "menu_dark.png"
+MENU_GIF_FILE    = Path(__file__).parent / "welcome.gif"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ЛОГИРОВАНИЕ
@@ -1319,6 +1319,13 @@ async def download_video(
     elif fmt in ("gif", "circle"):
         format_str = "best[ext=mp4]/best[ext=webm]/best"
 
+    # Pinterest/Twitch/Reddit — ограниченные форматы, используем best
+    is_simple_platform = any(p in str(url).lower() for p in [
+        "pinterest.com", "pin.it", "reddit.com", "dailymotion.com", "dai.ly",
+    ])
+    if is_simple_platform and fmt not in ("audio", "wav", "flac"):
+        format_str = "best"
+
     last_update = {"pct": -1}
     loop = asyncio.get_running_loop()
 
@@ -1346,7 +1353,7 @@ async def download_video(
     opts.update({
         "outtmpl": str(output_path / "%(id)s.%(ext)s"),
         "format": format_str + "/best",
-        "merge_output_format": "mp4" if fmt not in ("audio", "wav", "flac") else None,
+        "merge_output_format": None if is_simple_platform else ("mp4" if fmt not in ("audio", "wav", "flac") else None),
         "progress_hooks": [progress_hook],
     })
 
@@ -1575,37 +1582,55 @@ def get_user_theme(context) -> str:
 
 
 async def send_menu_photo(target, caption, reply_markup, context, gif=False):
-    """Отправляет меню с фото/GIF."""
+    """Отправляет меню с фото/GIF из локальных файлов."""
     global _GIF_FILE_ID
     theme = get_user_theme(context)
+    chat_id = target.chat_id if hasattr(target, "chat_id") else target.id
 
-    if gif and MENU_GIF_URL:
+    # GIF при /start
+    if gif and MENU_GIF_FILE.exists():
         try:
-            src = _GIF_FILE_ID or MENU_GIF_URL
+            if _GIF_FILE_ID:
+                src = _GIF_FILE_ID
+            else:
+                src = open(MENU_GIF_FILE, "rb")
             if hasattr(target, "reply_animation"):
                 msg = await target.reply_animation(animation=src, caption=caption, reply_markup=reply_markup)
             else:
-                msg = await context.bot.send_animation(chat_id=target.id, animation=src, caption=caption, reply_markup=reply_markup)
+                msg = await context.bot.send_animation(chat_id=chat_id, animation=src, caption=caption, reply_markup=reply_markup)
             if not _GIF_FILE_ID and msg.animation:
                 _GIF_FILE_ID = msg.animation.file_id
             return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("GIF send failed: %s", e)
 
-    photo_url = MENU_PHOTO_DARK if theme == "dark" else MENU_PHOTO_LIGHT
-    photo = _PHOTO_CACHE.get(theme) or photo_url
+    # Фото меню (светлая/тёмная тема)
+    photo_path = MENU_PHOTO_DARK if theme == "dark" else MENU_PHOTO_LIGHT
+    cached = _PHOTO_CACHE.get(theme)
     try:
-        if hasattr(target, "reply_photo"):
-            msg = await target.reply_photo(photo=photo, caption=caption, reply_markup=reply_markup)
+        if cached:
+            src = cached
+        elif photo_path.exists():
+            src = open(photo_path, "rb")
         else:
-            msg = await context.bot.send_photo(chat_id=target.id, photo=photo, caption=caption, reply_markup=reply_markup)
+            # Нет файла — просто текст
+            if hasattr(target, "reply_text"):
+                await target.reply_text(caption, reply_markup=reply_markup)
+            else:
+                await context.bot.send_message(chat_id=chat_id, text=caption, reply_markup=reply_markup)
+            return
+
+        if hasattr(target, "reply_photo"):
+            msg = await target.reply_photo(photo=src, caption=caption, reply_markup=reply_markup)
+        else:
+            msg = await context.bot.send_photo(chat_id=chat_id, photo=src, caption=caption, reply_markup=reply_markup)
         if theme not in _PHOTO_CACHE and msg.photo:
             _PHOTO_CACHE[theme] = msg.photo[-1].file_id
     except Exception:
         if hasattr(target, "reply_text"):
             await target.reply_text(caption, reply_markup=reply_markup)
         else:
-            await context.bot.send_message(chat_id=target.id, text=caption, reply_markup=reply_markup)
+            await context.bot.send_message(chat_id=chat_id, text=caption, reply_markup=reply_markup)
 
 
 async def _notify_admin(user, platform, fmt, context):
@@ -2012,10 +2037,9 @@ async def cb_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer(t(context, "history_empty"), show_alert=True)
         else:
             # FIX: отправляем НОВОЕ сообщение для истории (не ломаем фото-меню)
-            kb = InlineKeyboardMarkup(
-                history_keyboard(history).inline_keyboard
-                + [[InlineKeyboardButton("◀️ Закрыть", callback_data="history_close")]]
-            )
+            rows = list(history_keyboard(history).inline_keyboard)
+            rows.append([InlineKeyboardButton("◀️ Закрыть", callback_data="history_close")])
+            kb = InlineKeyboardMarkup(rows)
             await query.message.reply_text(t(context, "history_title"), reply_markup=kb)
 
     elif action == "me":
@@ -2433,7 +2457,7 @@ async def cb_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.delete()
         except Exception:
             pass
-        photo_url = MENU_PHOTO_DARK if new == "dark" else MENU_PHOTO_LIGHT
+        photo_path = MENU_PHOTO_DARK if new == "dark" else MENU_PHOTO_LIGHT
         cached = _PHOTO_CACHE.get(new)
         theme_label = T["theme_dark"] if new == "dark" else T["theme_light"]
         def_fmt = context.user_data.get("default_format", "video")
@@ -2442,8 +2466,16 @@ async def cb_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
         text = T["settings_info"].format(theme=theme_label, fmt=fmt_labels.get(def_fmt, def_fmt), quality=q_labels.get(def_q, def_q))
         try:
+            if cached:
+                src = cached
+            elif photo_path.exists():
+                src = open(photo_path, "rb")
+            else:
+                await context.bot.send_message(query.message.chat_id, text=text,
+                                               reply_markup=settings_keyboard(new, def_fmt, def_q, lang))
+                return
             msg = await context.bot.send_photo(
-                query.message.chat_id, photo=cached or photo_url, caption=text,
+                query.message.chat_id, photo=src, caption=text,
                 reply_markup=settings_keyboard(new, def_fmt, def_q, lang),
             )
             if new not in _PHOTO_CACHE and msg.photo:
