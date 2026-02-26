@@ -70,7 +70,7 @@ FFMPEG_LOCATION: str = ""
 
 
 def _setup_ffmpeg():
-    """Находит или устанавливает ffmpeg."""
+    """Находит ffmpeg — без тяжёлых загрузок."""
     global FFMPEG_LOCATION
 
     def _set(directory: str):
@@ -78,75 +78,41 @@ def _setup_ffmpeg():
         os.environ["PATH"] = directory + os.pathsep + os.environ.get("PATH", "")
         FFMPEG_LOCATION = directory
 
-    # 1. Системный
-    if shutil.which("ffmpeg") and shutil.which("ffprobe"):
-        loc = str(Path(shutil.which("ffmpeg")).parent)
+    # 1. Системный PATH (Docker apt-get, nixpacks)
+    ff = shutil.which("ffmpeg")
+    if ff:
+        loc = str(Path(ff).parent)
         _set(loc)
-        logger.info("ffmpeg найден в системе: %s", loc)
+        logger.info("✅ ffmpeg: %s", loc)
         return
 
-    # 2. Статическая сборка
-    try:
-        import urllib.request, tarfile, lzma, stat as stat_mod, io
-
-        ffmpeg_dir = Path("/tmp/ffmpeg_bin")
-        ffmpeg_dir.mkdir(exist_ok=True)
-        ffmpeg_bin  = ffmpeg_dir / "ffmpeg"
-        ffprobe_bin = ffmpeg_dir / "ffprobe"
-
-        if not ffmpeg_bin.exists() or not ffprobe_bin.exists():
-            logger.info("Скачиваю ffmpeg+ffprobe...")
-            url = (
-                "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/"
-                "latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
-            )
-            data = urllib.request.urlopen(url, timeout=120).read()
-            with lzma.open(io.BytesIO(data)) as lzf:
-                with tarfile.open(fileobj=lzf) as tf:
-                    for member in tf.getmembers():
-                        fname = Path(member.name).name
-                        if fname in ("ffmpeg", "ffprobe") and member.isfile():
-                            src = tf.extractfile(member)
-                            if src:
-                                dest = ffmpeg_dir / fname
-                                dest.write_bytes(src.read())
-                                dest.chmod(
-                                    dest.stat().st_mode
-                                    | stat_mod.S_IEXEC
-                                    | stat_mod.S_IXGRP
-                                    | stat_mod.S_IXOTH
-                                )
-                                logger.info("✅ %s извлечён", fname)
-
-        if ffmpeg_bin.exists() and ffprobe_bin.exists():
-            _set(str(ffmpeg_dir))
-            logger.info("✅ ffmpeg+ffprobe готовы: %s", ffmpeg_dir)
+    # 2. Стандартные пути (если PATH неполный)
+    for d in ["/usr/bin", "/usr/local/bin", "/opt/bin"]:
+        if (Path(d) / "ffmpeg").exists():
+            _set(d)
+            logger.info("✅ ffmpeg: %s", d)
             return
-    except Exception as e:
-        logger.warning("Статический ffmpeg: %s", e)
 
-    # 3. Nix store
+    # 3. Nix store (Railway, Render)
     results = glob_module.glob("/nix/store/*/bin/ffmpeg")
     if results:
-        _set(str(Path(results[0]).parent))
-        logger.info("ffmpeg найден в nix store: %s", results[0])
+        loc = str(Path(results[0]).parent)
+        _set(loc)
+        logger.info("✅ ffmpeg nix: %s", loc)
         return
 
-    # 4. apt-get
+    # 4. imageio-ffmpeg (pip)
     try:
-        subprocess.run(
-            ["apt-get", "install", "-y", "-q", "ffmpeg"],
-            capture_output=True, timeout=120,
-        )
-        ff = shutil.which("ffmpeg")
-        if ff:
-            _set(str(Path(ff).parent))
-            logger.info("ffmpeg установлен через apt-get")
+        import imageio_ffmpeg
+        ff_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if ff_exe:
+            _set(str(Path(ff_exe).parent))
+            logger.info("✅ ffmpeg imageio: %s", ff_exe)
             return
-    except Exception as e:
-        logger.warning("apt-get: %s", e)
+    except Exception:
+        pass
 
-    logger.error("ffmpeg НЕ НАЙДЕН!")
+    logger.warning("⚠️ ffmpeg НЕ НАЙДЕН — обработка видео ограничена")
 
 
 _setup_ffmpeg()
