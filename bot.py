@@ -1068,13 +1068,24 @@ def compress_video(path: Path, target_mb: float = 45.0) -> Path:
 def apply_bass_boost(path: Path) -> Path:
     """Басс-буст: усиливает низкие частоты."""
     out = path.with_stem(path.stem + "_bass")
+    # equalizer совместим с любой версией ffmpeg
     cmd = [
         "ffmpeg", "-y", "-i", str(path),
-        "-af", "bass=g=25:f=50:w=0.8,equalizer=f=100:t=h:w=200:g=10,volume=1.5,alimiter=limit=0.95",
+        "-af", (
+            "equalizer=f=60:t=h:w=50:g=20,"
+            "equalizer=f=120:t=h:w=80:g=12,"
+            "equalizer=f=200:t=h:w=100:g=5,"
+            "volume=1.8,"
+            "alimiter=limit=0.95:attack=5:release=50"
+        ),
         "-c:v", "copy",
         str(out),
     ]
-    return out if ffmpeg_run(cmd) and out.exists() else path
+    if ffmpeg_run(cmd) and out.exists():
+        logger.info("✅ Басс-буст применён: %s", out)
+        return out
+    logger.warning("⚠️ Басс-буст не сработал, возвращаю оригинал")
+    return path
 
 
 def apply_shakal(path: Path) -> Path:
@@ -2155,6 +2166,7 @@ def init_download_context(context, url: str, platform: str):
         "trim_start": None,
         "trim_end": None,
         "subtitles": False,
+        "bass_boost": False,
         "waiting_trim": False,
         "speed": "1.0",
     })
@@ -3355,6 +3367,7 @@ async def _do_download(user, status_msg, context):
 
         # Басс-буст
         bass_boost = context.user_data.get("bass_boost", False)
+        logger.warning("Bass boost: %s, fmt: %s, ffmpeg: %s", bass_boost, fmt, ffmpeg_ok())
         if bass_boost and fmt in ("video", "shakal") and ffmpeg_ok():
             await status_msg.edit_text("🔊 Басс-буст...")
             new = await asyncio.get_event_loop().run_in_executor(None, apply_bass_boost, current)
