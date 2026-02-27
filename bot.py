@@ -118,16 +118,18 @@ def _setup_ffmpeg():
             link_dir.mkdir(exist_ok=True)
             ffmpeg_link = link_dir / "ffmpeg"
             ffprobe_link = link_dir / "ffprobe"
-            # ffmpeg симлинк
+            # ffmpeg симлинк/копия
             if not ffmpeg_link.exists():
                 try:
                     ffmpeg_link.symlink_to(ff_exe)
                 except Exception:
-                    import shutil as sh
-                    sh.copy2(ff_exe, str(ffmpeg_link))
-                    ffmpeg_link.chmod(0o755)
-            # ffprobe — imageio-ffmpeg может не содержать его,
-            # но ffmpeg сам умеет работать как ffprobe через -i
+                    try:
+                        import shutil as sh
+                        sh.copy2(ff_exe, str(ffmpeg_link))
+                        os.chmod(str(ffmpeg_link), 0o755)
+                    except Exception as e2:
+                        logger.warning("imageio symlink/copy failed: %s", e2)
+            # ffprobe
             if not ffprobe_link.exists():
                 ff_dir = Path(ff_exe).parent
                 probe_candidates = list(ff_dir.glob("ffprobe*"))
@@ -139,13 +141,62 @@ def _setup_ffmpeg():
             _set(str(link_dir))
             logger.info("✅ ffmpeg imageio: %s → %s", ff_exe, link_dir)
             return
+    except ImportError:
+        pass
     except Exception as e:
         logger.warning("imageio-ffmpeg ошибка: %s", e)
+
+    # 5. static-ffmpeg (pip)
+    try:
+        import static_ffmpeg
+        static_ffmpeg.add_paths()
+        ff = shutil.which("ffmpeg")
+        if ff:
+            _set(str(Path(ff).parent))
+            logger.info("✅ ffmpeg static: %s", ff)
+            return
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning("static-ffmpeg ошибка: %s", e)
 
     logger.warning("⚠️ ffmpeg НЕ НАЙДЕН — обработка видео ограничена")
 
 
 _setup_ffmpeg()
+
+# Диагностика ffmpeg при запуске
+def _test_ffmpeg():
+    """Проверяет что ffmpeg реально работает."""
+    logger.warning("🔍 FFMPEG диагностика:")
+    logger.warning("  FFMPEG_LOCATION = %s", FFMPEG_LOCATION)
+    logger.warning("  shutil.which('ffmpeg') = %s", shutil.which("ffmpeg"))
+
+    # Проверяем симлинк
+    if FFMPEG_LOCATION:
+        link = Path(FFMPEG_LOCATION) / "ffmpeg"
+        logger.warning("  symlink %s exists=%s", link, link.exists())
+        if link.exists():
+            try:
+                logger.warning("  symlink target = %s", link.resolve())
+            except Exception:
+                pass
+
+    # Пробуем запустить
+    ff = shutil.which("ffmpeg")
+    if not ff and FFMPEG_LOCATION:
+        ff = str(Path(FFMPEG_LOCATION) / "ffmpeg")
+    if ff:
+        try:
+            r = subprocess.run([ff, "-version"], capture_output=True, text=True, timeout=5)
+            first_line = r.stdout.split("\n")[0] if r.stdout else "no output"
+            logger.warning("  ✅ ffmpeg работает: %s", first_line)
+        except Exception as e:
+            logger.error("  ❌ ffmpeg НЕ запускается: %s", e)
+    else:
+        logger.error("  ❌ ffmpeg бинарник не найден")
+
+_test_ffmpeg()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ХРАНИЛИЩЕ (Redis + JSON fallback)
@@ -405,6 +456,11 @@ TEXTS = {
         "gif_download": "⬇️ Скачать",
         "bass_on": "🔊 Басс-буст ✅",
         "bass_off": "🔊 Басс-буст ❌",
+        "shakal_menu": "🗿 Шакал — настрой или скачай:",
+        "shakal_speed": "⚡ {speed}x",
+        "shakal_bass_on": "🔊 Басс ✅",
+        "shakal_bass_off": "🔊 Басс ❌",
+        "shakal_download": "⬇️ Шакалить",
         "trim_yes": "✂️ Обрезать",
         "trim_no": "⏭ Без обрезки",
         "orient_original": "📱 Оригинал",
@@ -553,6 +609,11 @@ TEXTS = {
         "gif_download": "⬇️ Download",
         "bass_on": "🔊 Bass boost ✅",
         "bass_off": "🔊 Bass boost ❌",
+        "shakal_menu": "🗿 Deep-fried — adjust or download:",
+        "shakal_speed": "⚡ {speed}x",
+        "shakal_bass_on": "🔊 Bass ✅",
+        "shakal_bass_off": "🔊 Bass ❌",
+        "shakal_download": "⬇️ Deep-fry",
         "trim_yes": "✂️ Trim",
         "trim_no": "⏭ No trim",
         "orient_original": "📱 Original",
@@ -1118,7 +1179,8 @@ def compress_video(path: Path, target_mb: float = 45.0) -> Path:
 def apply_bass_boost(path: Path) -> Path:
     """Басс-буст: усиливает низкие частоты."""
     out = path.with_stem(path.stem + "_bass")
-    # equalizer совместим с любой версией ffmpeg
+
+    # Попытка 1: полный эквалайзер
     cmd = [
         "ffmpeg", "-y", "-i", str(path),
         "-af", (
@@ -1131,23 +1193,38 @@ def apply_bass_boost(path: Path) -> Path:
         "-c:v", "copy",
         str(out),
     ]
-    if ffmpeg_run(cmd) and out.exists():
-        logger.info("✅ Басс-буст применён: %s", out)
+    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Басс-буст (equalizer) применён: %s", out)
         return out
-    logger.warning("⚠️ Басс-буст не сработал, возвращаю оригинал")
+
+    # Попытка 2: простой volume boost
+    logger.warning("Bass boost: equalizer не сработал, пробуем простой volume")
+    cmd2 = [
+        "ffmpeg", "-y", "-i", str(path),
+        "-af", "volume=3.0,alimiter=limit=0.95",
+        "-c:v", "copy",
+        str(out),
+    ]
+    if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Басс-буст (volume) применён: %s", out)
+        return out
+
+    logger.error("❌ Басс-буст: обе попытки не удались")
     return path
 
 
 def apply_shakal(path: Path) -> Path:
     """Шакал: максимально убитое качество (мем-эффект)."""
     out = path.with_stem(path.stem + "_shakal").with_suffix(".mp4")
+
+    # Попытка 1: полный шакал с фильтрами
     cmd = [
         "ffmpeg", "-y", "-i", str(path),
         "-vf", (
-            "scale=144:-2,"                          # 144p
-            "noise=alls=40:allf=t,"                   # шум
-            "eq=contrast=1.8:brightness=0.05:saturation=2.5,"  # пережатые цвета
-            "unsharp=5:5:2.0"                         # уродский шарп
+            "scale=144:-2,"
+            "noise=alls=40:allf=t,"
+            "eq=contrast=1.8:brightness=0.05:saturation=2.5,"
+            "unsharp=5:5:2.0"
         ),
         "-c:v", "libx264", "-crf", "45", "-preset", "ultrafast",
         "-b:v", "50k", "-maxrate", "80k", "-bufsize", "40k",
@@ -1155,7 +1232,26 @@ def apply_shakal(path: Path) -> Path:
         "-movflags", "+faststart",
         str(out),
     ]
-    return out if ffmpeg_run(cmd) and out.exists() else path
+    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Шакал (полный) применён: %s", out)
+        return out
+
+    # Попытка 2: простой шакал — только пережатие без фильтров
+    logger.warning("Шакал: полные фильтры не сработали, пробуем простой")
+    cmd2 = [
+        "ffmpeg", "-y", "-i", str(path),
+        "-vf", "scale=144:-2",
+        "-c:v", "libx264", "-crf", "45", "-preset", "ultrafast",
+        "-b:v", "50k",
+        "-c:a", "aac", "-b:a", "24k", "-ar", "22050", "-ac", "1",
+        str(out),
+    ]
+    if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Шакал (простой) применён: %s", out)
+        return out
+
+    logger.error("❌ Шакал: обе попытки не удались")
+    return path
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1280,6 +1376,15 @@ def gif_menu_keyboard(speed="1.0", lang="ru") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(T["gif_speed"].format(speed=speed), callback_data="gif_speed")],
         [InlineKeyboardButton(T["gif_download"], callback_data="gif_download")],
+    ])
+
+
+def shakal_menu_keyboard(speed="1.0", bass=False, lang="ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(T["shakal_speed"].format(speed=speed), callback_data="shakal_speed"),
+         InlineKeyboardButton(T["shakal_bass_on"] if bass else T["shakal_bass_off"], callback_data="shakal_bass")],
+        [InlineKeyboardButton(T["shakal_download"], callback_data="shakal_download")],
     ])
 
 
@@ -2447,11 +2552,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=circle_menu_keyboard(speed, audio, lang),
                 )
             elif fmt == "shakal":
-                status_msg = await update.message.reply_text(
-                    f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
-                    reply_markup=cancel_keyboard(lang),
+                speed = context.user_data.get("speed", "1.0")
+                bass = context.user_data.get("bass_boost", False)
+                await update.message.reply_text(
+                    t(context, "shakal_menu"),
+                    reply_markup=shakal_menu_keyboard(speed, bass, lang),
                 )
-                await _run_download(user, status_msg, context)
             else:
                 subs_on = context.user_data.get("subtitles", False)
                 speed = context.user_data.get("speed", "1.0")
@@ -2831,6 +2937,12 @@ async def cb_speed(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         reply_markup=gif_menu_keyboard(speed, lang))
         return
 
+    if context.user_data.pop("shakal_speed_return", False):
+        bass = context.user_data.get("bass_boost", False)
+        await safe_edit(query, t(context, "shakal_menu"),
+                        reply_markup=shakal_menu_keyboard(speed, bass, lang))
+        return
+
     subs_on = context.user_data.get("subtitles", False)
     await safe_edit(query, t(context, "step_orient"),
                     reply_markup=orientation_keyboard(subs_on, speed, context.user_data.get("bass_boost", False), lang))
@@ -2902,6 +3014,26 @@ async def cb_gif_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _run_download(query.from_user, query.message, context)
 
 
+async def cb_shakal_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    lang = get_lang(context)
+
+    if query.data == "shakal_speed":
+        context.user_data["shakal_speed_return"] = True
+        await safe_edit(query, t(context, "step_speed"), reply_markup=speed_keyboard(lang))
+    elif query.data == "shakal_bass":
+        context.user_data["bass_boost"] = not context.user_data.get("bass_boost", False)
+        speed = context.user_data.get("speed", "1.0")
+        bass = context.user_data["bass_boost"]
+        await safe_edit(query, t(context, "shakal_menu"),
+                        reply_markup=shakal_menu_keyboard(speed, bass, lang))
+    elif query.data == "shakal_download":
+        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
+                        reply_markup=cancel_keyboard(lang))
+        await _run_download(query.from_user, query.message, context)
+
+
 async def cb_trim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2930,6 +3062,11 @@ async def cb_trim(update: Update, context: ContextTypes.DEFAULT_TYPE):
             speed = context.user_data.get("speed", "1.0")
             await safe_edit(query, t(context, "gif_menu"),
                             reply_markup=gif_menu_keyboard(speed, lang))
+        elif fmt == "shakal":
+            speed = context.user_data.get("speed", "1.0")
+            bass = context.user_data.get("bass_boost", False)
+            await safe_edit(query, t(context, "shakal_menu"),
+                            reply_markup=shakal_menu_keyboard(speed, bass, lang))
         else:
             await show_preview_or_download(query, context)
     else:
@@ -3326,20 +3463,55 @@ async def _do_download(user, status_msg, context):
         # GIF
         if fmt == "gif":
             dur = await asyncio.get_event_loop().run_in_executor(None, get_video_duration, current)
-            out_gif = current.with_suffix(".gif")
-            # GIF speed: добавляем setpts если speed != 1.0
-            speed_filter = f"setpts={1/speed}*PTS," if speed != 1.0 else ""
-            vf = f"{speed_filter}fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"
-            cmd = [
-                "ffmpeg", "-y", "-i", str(current),
-                "-vf", vf,
-                "-loop", "0", str(out_gif),
-            ]
-            est_dur = dur / speed if speed != 1.0 else dur
-            await ffmpeg_with_progress(cmd, status_msg, f"🌀 GIF{' ⚡' + str(speed) + 'x' if speed != 1.0 else ''}...", est_dur)
-            if out_gif.exists():
+            out_gif = current.with_stem(current.stem + "_gif").with_suffix(".gif")
+
+            if speed != 1.0 and ffmpeg_ok():
+                # Одна команда: ускорение + конвертация в GIF через filter_complex
+                vf = f"setpts={1/speed}*PTS,fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"
+                cmd = [
+                    "ffmpeg", "-y", "-i", str(current),
+                    "-filter_complex", vf,
+                    "-loop", "0", str(out_gif),
+                ]
+                logger.warning("GIF speed+convert cmd: %s", " ".join(cmd))
+                est_dur = dur / speed
+                ok = await asyncio.get_event_loop().run_in_executor(None, ffmpeg_run, cmd)
+                if not ok or not out_gif.exists() or out_gif.stat().st_size == 0:
+                    # Фоллбэк: простая конвертация без палитры
+                    logger.warning("GIF filter_complex failed, trying simple")
+                    out_gif.unlink(missing_ok=True)
+                    cmd_simple = [
+                        "ffmpeg", "-y", "-i", str(current),
+                        "-vf", f"setpts={1/speed}*PTS,fps=12,scale=320:-1",
+                        "-loop", "0", str(out_gif),
+                    ]
+                    await asyncio.get_event_loop().run_in_executor(None, ffmpeg_run, cmd_simple)
+            else:
+                # Без ускорения — обычная конвертация
+                cmd = [
+                    "ffmpeg", "-y", "-i", str(current),
+                    "-vf", "fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+                    "-loop", "0", str(out_gif),
+                ]
+                logger.warning("GIF convert cmd: %s", " ".join(cmd))
+                ok = await asyncio.get_event_loop().run_in_executor(None, ffmpeg_run, cmd)
+                if not ok or not out_gif.exists() or out_gif.stat().st_size == 0:
+                    # Фоллбэк: простая конвертация без палитры
+                    logger.warning("GIF palettegen failed, trying simple")
+                    out_gif.unlink(missing_ok=True)
+                    cmd_simple = [
+                        "ffmpeg", "-y", "-i", str(current),
+                        "-vf", "fps=12,scale=320:-1",
+                        "-loop", "0", str(out_gif),
+                    ]
+                    await asyncio.get_event_loop().run_in_executor(None, ffmpeg_run, cmd_simple)
+
+            if out_gif.exists() and out_gif.stat().st_size > 0:
                 current = out_gif
                 files_to_clean.append(current)
+            else:
+                logger.error("GIF конвертация полностью провалена, отправляем как видео")
+                fmt = "video"
 
         # Кружочек
         elif fmt == "circle":
@@ -3359,13 +3531,42 @@ async def _do_download(user, status_msg, context):
 
         # Шакал
         elif fmt == "shakal":
+            logger.warning("Шакал: ffmpeg_ok=%s, FFMPEG_LOCATION=%s", ffmpeg_ok(), FFMPEG_LOCATION)
             if ffmpeg_ok():
                 dur = await asyncio.get_event_loop().run_in_executor(None, get_video_duration, current)
+
+                # Скорость ДО шакал-эффекта
+                if speed != 1.0:
+                    await status_msg.edit_text(f"⚡ {speed}x...")
+                    speed_out = current.with_stem(current.stem + "_shakalspeed").with_suffix(".mp4")
+                    atempo_parts = []
+                    rem = speed
+                    while rem > 2.0:
+                        atempo_parts.append("atempo=2.0"); rem /= 2.0
+                    while rem < 0.5:
+                        atempo_parts.append("atempo=0.5"); rem /= 0.5
+                    atempo_parts.append(f"atempo={rem}")
+                    speed_cmd = [
+                        "ffmpeg", "-y", "-i", str(current),
+                        "-vf", f"setpts={1/speed}*PTS",
+                        "-af", ",".join(atempo_parts),
+                        "-c:v", "libx264", "-preset", "fast",
+                        str(speed_out),
+                    ]
+                    if ffmpeg_run(speed_cmd) and speed_out.exists() and speed_out.stat().st_size > 0:
+                        files_to_clean.append(speed_out)
+                        current = speed_out
+
                 await status_msg.edit_text("🗿 Шакалим...")
                 new = await asyncio.get_event_loop().run_in_executor(None, apply_shakal, current)
+                logger.warning("Шакал результат: %s → %s", current, new)
                 if new != current:
                     files_to_clean.append(new)
                     current = new
+                else:
+                    logger.error("Шакал: ffmpeg вернул оригинал — обработка не удалась")
+            else:
+                logger.error("Шакал: ffmpeg не найден!")
 
         # Ориентация
         if fmt == "video" and orient != "original":
@@ -3642,6 +3843,7 @@ def main():
     app.add_handler(CallbackQueryHandler(cb_orientation, pattern="^orient_"))
     app.add_handler(CallbackQueryHandler(cb_circle, pattern="^circle_"))
     app.add_handler(CallbackQueryHandler(cb_gif_menu, pattern="^gif_"))
+    app.add_handler(CallbackQueryHandler(cb_shakal_menu, pattern="^shakal_"))
     app.add_handler(CallbackQueryHandler(cb_trim, pattern="^trim_"))
     app.add_handler(CallbackQueryHandler(cb_settings, pattern="^settings_|^setfmt_|^setquality_"))
     app.add_handler(CallbackQueryHandler(cb_patch_nav, pattern="^patch_nav_"))
