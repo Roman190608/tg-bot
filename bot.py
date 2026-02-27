@@ -48,9 +48,13 @@ DATA_FILE    = DATA_DIR / "data.json"
 REDIS_URL    = os.environ.get("REDIS_URL")
 
 # Фото меню
-MENU_PHOTO_LIGHT = Path(__file__).parent / "menu_light.png"
-MENU_PHOTO_DARK  = Path(__file__).parent / "menu_dark.png"
-MENU_GIF_FILE    = Path(__file__).parent / "welcome.gif"
+_ASSETS_DIR = Path(__file__).parent
+MENU_GIF_FILE = _ASSETS_DIR / "welcome.gif"
+
+
+def _menu_photo_path(theme: str, lang: str) -> Path:
+    """Возвращает путь к картинке меню по теме и языку."""
+    return _ASSETS_DIR / f"menu_{theme}_{lang}.png"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ЛОГИРОВАНИЕ
@@ -791,6 +795,8 @@ def update_stats(user_id: int, platform: str):
 
 
 def check_limit(user_id: int) -> tuple[bool, int]:
+    if user_id == ADMIN_ID:
+        return True, 999  # Админ — безлимит
     data = get_data()
     today_count = data.get("downloads_today", {}).get(str(user_id), 0)
     return today_count < DAILY_LIMIT, DAILY_LIMIT - today_count
@@ -1145,6 +1151,7 @@ def trim_keyboard(lang="ru") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(T["trim_yes"], callback_data="trim_yes"),
          InlineKeyboardButton(T["trim_no"], callback_data="trim_no")],
+        [InlineKeyboardButton("◀️ " + T["back_btn"], callback_data="trim_back")],
     ])
 
 
@@ -1256,24 +1263,53 @@ def persistent_menu_keyboard(lang="ru") -> ReplyKeyboardMarkup:
 # СКАЧИВАНИЕ
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _ydl_base_opts() -> dict:
-    """Базовые опции yt-dlp."""
+def _ydl_base_opts(url: str = "") -> dict:
+    """Базовые опции yt-dlp с учётом платформы."""
+    url_lower = url.lower() if url else ""
+
+    # User-Agent по платформе
+    if "instagram.com" in url_lower or "instagr.am" in url_lower:
+        user_agent = (
+            "Instagram 317.0.0.34.109 Android (31/12; 420dpi; 1080x2280; "
+            "samsung; SM-G991B; o1s; exynos2100; en_US; 556895435)"
+        )
+    elif "pinterest" in url_lower or "pin.it" in url_lower:
+        user_agent = (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+            "Mobile/15E148 Safari/604.1"
+        )
+    else:
+        user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+
     opts = {
         "quiet": True,
         "no_warnings": True,
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-        },
+        "http_headers": {"User-Agent": user_agent},
         "socket_timeout": 30,
-        "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
-        "geo_bypass": True,              # FIX: обход геоблоков (Яндекс Музыка и др.)
-        "geo_bypass_country": "RU",      # FIX: для Яндекс Музыки
-        "nocheckcertificate": True,       # FIX: обход SSL ошибок Pinterest
+        "extractor_args": {
+            "youtube": {"player_client": ["ios", "android", "web"]},
+            "instagram": {"api_endpoint": "media"},
+        },
+        "geo_bypass": True,
+        "geo_bypass_country": "RU",
+        "nocheckcertificate": True,
     }
+
+    # Pinterest — не проверять форматы, разрешить любой
+    if "pinterest" in url_lower or "pin.it" in url_lower:
+        opts["no_check_formats"] = True
+        opts["format_sort"] = ["res", "ext:mp4:jpg"]
+
+    # Instagram — referer и app ID
+    if "instagram.com" in url_lower:
+        opts["http_headers"]["Referer"] = "https://www.instagram.com/"
+        opts["http_headers"]["X-IG-App-ID"] = "936619743392459"
+
     if FFMPEG_LOCATION:
         opts["ffmpeg_location"] = FFMPEG_LOCATION
     cookies = Path("cookies.txt")
@@ -1283,7 +1319,7 @@ def _ydl_base_opts() -> dict:
 
 
 async def download_thumbnail(url: str, output_path: Path) -> Path | None:
-    opts = _ydl_base_opts()
+    opts = _ydl_base_opts(url)
     opts.update({
         "skip_download": True,
         "writethumbnail": True,
@@ -1349,7 +1385,7 @@ async def download_video(
                     except Exception:
                         pass
 
-    opts = _ydl_base_opts()
+    opts = _ydl_base_opts(url)
     opts.update({
         "outtmpl": str(output_path / "%(id)s.%(ext)s"),
         "format": format_str + "/best",
@@ -1428,7 +1464,7 @@ async def download_playlist(url, quality, output_path, status_msg, cancel_flag, 
             except Exception:
                 pass
 
-    opts = _ydl_base_opts()
+    opts = _ydl_base_opts(url)
     opts.update({
         "outtmpl": str(playlist_dir / "%(playlist_index)s_%(title)s.%(ext)s"),
         "format": QUALITY_OPTIONS.get(quality, QUALITY_OPTIONS["best"]),
@@ -1585,6 +1621,7 @@ async def send_menu_photo(target, caption, reply_markup, context, gif=False):
     """Отправляет меню с фото/GIF из локальных файлов."""
     global _GIF_FILE_ID
     theme = get_user_theme(context)
+    lang = get_lang(context)
     chat_id = target.chat_id if hasattr(target, "chat_id") else target.id
 
     # GIF при /start
@@ -1604,16 +1641,16 @@ async def send_menu_photo(target, caption, reply_markup, context, gif=False):
         except Exception as e:
             logger.warning("GIF send failed: %s", e)
 
-    # Фото меню (светлая/тёмная тема)
-    photo_path = MENU_PHOTO_DARK if theme == "dark" else MENU_PHOTO_LIGHT
-    cached = _PHOTO_CACHE.get(theme)
+    # Фото меню (тема + язык)
+    cache_key = f"{theme}_{lang}"
+    photo_path = _menu_photo_path(theme, lang)
+    cached = _PHOTO_CACHE.get(cache_key)
     try:
         if cached:
             src = cached
         elif photo_path.exists():
             src = open(photo_path, "rb")
         else:
-            # Нет файла — просто текст
             if hasattr(target, "reply_text"):
                 await target.reply_text(caption, reply_markup=reply_markup)
             else:
@@ -1624,8 +1661,8 @@ async def send_menu_photo(target, caption, reply_markup, context, gif=False):
             msg = await target.reply_photo(photo=src, caption=caption, reply_markup=reply_markup)
         else:
             msg = await context.bot.send_photo(chat_id=chat_id, photo=src, caption=caption, reply_markup=reply_markup)
-        if theme not in _PHOTO_CACHE and msg.photo:
-            _PHOTO_CACHE[theme] = msg.photo[-1].file_id
+        if cache_key not in _PHOTO_CACHE and msg.photo:
+            _PHOTO_CACHE[cache_key] = msg.photo[-1].file_id
     except Exception:
         if hasattr(target, "reply_text"):
             await target.reply_text(caption, reply_markup=reply_markup)
@@ -2317,7 +2354,17 @@ async def cb_trim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     fmt = context.user_data.get("format", "video")
     lang = get_lang(context)
 
-    if query.data == "trim_no":
+    if query.data == "trim_back":
+        # Возвращаемся к выбору формата
+        platform = context.user_data.get("platform", "Видео")
+        url = context.user_data.get("pending_url", "")
+        _, remaining = check_limit(query.from_user.id)
+        await safe_edit(
+            query,
+            f"🎬 {platform}\n{t(context, 'remaining', remaining=remaining)}\n\n{t(context, 'step1')}",
+            reply_markup=format_keyboard(lang, context.user_data.get("default_format", ""), url),
+        )
+    elif query.data == "trim_no":
         context.user_data["trim_start"] = None
         context.user_data["trim_end"] = None
         if fmt == "circle":
@@ -2457,8 +2504,9 @@ async def cb_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.delete()
         except Exception:
             pass
-        photo_path = MENU_PHOTO_DARK if new == "dark" else MENU_PHOTO_LIGHT
-        cached = _PHOTO_CACHE.get(new)
+        photo_path = _menu_photo_path(new, lang)
+        cache_key = f"{new}_{lang}"
+        cached = _PHOTO_CACHE.get(cache_key)
         theme_label = T["theme_dark"] if new == "dark" else T["theme_light"]
         def_fmt = context.user_data.get("default_format", "video")
         def_q = context.user_data.get("default_quality", "best")
@@ -2478,8 +2526,8 @@ async def cb_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 query.message.chat_id, photo=src, caption=text,
                 reply_markup=settings_keyboard(new, def_fmt, def_q, lang),
             )
-            if new not in _PHOTO_CACHE and msg.photo:
-                _PHOTO_CACHE[new] = msg.photo[-1].file_id
+            if cache_key not in _PHOTO_CACHE and msg.photo:
+                _PHOTO_CACHE[cache_key] = msg.photo[-1].file_id
         except Exception:
             await context.bot.send_message(query.message.chat_id, text=text,
                                            reply_markup=settings_keyboard(new, def_fmt, def_q, lang))
