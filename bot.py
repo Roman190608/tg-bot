@@ -1731,15 +1731,21 @@ async def download_video(
         "progress_hooks": [progress_hook],
     })
 
-    # Pinterest — максимально мягкие настройки формата
+    # Глобально: если ffmpeg не найден — отключаем мерж для ВСЕХ платформ
+    if not FFMPEG_LOCATION:
+        opts["format"] = "best/bestvideo/bestaudio"
+        opts["merge_output_format"] = None
+        opts["postprocessors"] = []
+
+    # Pinterest — максимально мягкие настройки формата (БЕЗ мержа!)
     if is_pinterest:
-        opts["format"] = "bv*+ba/bv*/ba*/b*/best"
+        opts["format"] = "best/bestvideo/bestaudio"
         opts["no_check_formats"] = True
         opts["ignore_no_formats_error"] = True
         opts["check_formats"] = False
-        opts["format_sort_force"] = True
         opts["compat_opts"] = {"format-spec"}
         opts.pop("merge_output_format", None)
+        opts["postprocessors"] = []
 
     # Аудио постпроцессоры
     if fmt in ("audio", "wav", "flac"):
