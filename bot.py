@@ -1231,19 +1231,39 @@ def apply_bass_boost(path: Path) -> Path:
     return path
 
 
-def apply_shakal(path: Path) -> Path:
-    """Шакал: максимально убитое качество (мем-эффект)."""
+def apply_shakal(path: Path, speed: float = 1.0) -> Path:
+    """Шакал: максимально убитое качество (мем-эффект). speed — ускорение."""
     out = path.with_stem(path.stem + "_shakal").with_suffix(".mp4")
 
-    # Попытка 1: полный шакал с фильтрами + аудио
+    # Формируем видеофильтр
+    speed_vf = f"setpts={1/speed}*PTS," if speed != 1.0 else ""
+    vf_full = (
+        f"{speed_vf}"
+        "scale=144:-2,"
+        "noise=alls=40:allf=t,"
+        "eq=contrast=1.8:brightness=0.05:saturation=2.5,"
+        "unsharp=5:5:2.0"
+    )
+    vf_simple = f"{speed_vf}scale=144:-2"
+
+    # Формируем аудиофильтр (atempo для скорости)
+    af_parts = []
+    if speed != 1.0:
+        rem = speed
+        while rem > 2.0:
+            af_parts.append("atempo=2.0"); rem /= 2.0
+        while rem < 0.5:
+            af_parts.append("atempo=0.5"); rem /= 0.5
+        af_parts.append(f"atempo={rem}")
+
+    # Попытка 1: полный шакал + скорость + аудио
     cmd = [
         "ffmpeg", "-y", "-i", str(path),
-        "-vf", (
-            "scale=144:-2,"
-            "noise=alls=40:allf=t,"
-            "eq=contrast=1.8:brightness=0.05:saturation=2.5,"
-            "unsharp=5:5:2.0"
-        ),
+        "-vf", vf_full,
+    ]
+    if af_parts:
+        cmd += ["-af", ",".join(af_parts)]
+    cmd += [
         "-c:v", "libx264", "-crf", "45", "-preset", "ultrafast",
         "-b:v", "50k", "-maxrate", "80k", "-bufsize", "40k",
         "-c:a", "aac", "-b:a", "24k", "-ar", "22050", "-ac", "1",
@@ -1252,7 +1272,7 @@ def apply_shakal(path: Path) -> Path:
     ]
     logger.warning("Шакал cmd1: %s", " ".join(cmd))
     if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
-        logger.info("✅ Шакал (полный) применён: %s", out)
+        logger.info("✅ Шакал (полный+audio) speed=%s: %s", speed, out)
         return out
 
     # Попытка 2: полный шакал БЕЗ аудио
@@ -1260,32 +1280,29 @@ def apply_shakal(path: Path) -> Path:
     out.unlink(missing_ok=True)
     cmd2 = [
         "ffmpeg", "-y", "-i", str(path),
-        "-vf", (
-            "scale=144:-2,"
-            "noise=alls=40:allf=t,"
-            "eq=contrast=1.8:brightness=0.05:saturation=2.5,"
-            "unsharp=5:5:2.0"
-        ),
+        "-vf", vf_full,
         "-c:v", "libx264", "-crf", "45", "-preset", "ultrafast",
         "-b:v", "50k", "-an",
         str(out),
     ]
+    logger.warning("Шакал cmd2: %s", " ".join(cmd2))
     if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
-        logger.info("✅ Шакал (без аудио) применён: %s", out)
+        logger.info("✅ Шакал (полный-an) speed=%s: %s", speed, out)
         return out
 
-    # Попытка 3: минимальный шакал — только пережатие
-    logger.warning("Шакал: попытка 2 не удалась, пробуем минимальный")
+    # Попытка 3: простой шакал БЕЗ аудио
+    logger.warning("Шакал: попытка 2 не удалась, пробуем простой")
     out.unlink(missing_ok=True)
     cmd3 = [
         "ffmpeg", "-y", "-i", str(path),
-        "-vf", "scale=144:-2",
+        "-vf", vf_simple,
         "-c:v", "libx264", "-crf", "51", "-preset", "ultrafast",
         "-an",
         str(out),
     ]
+    logger.warning("Шакал cmd3: %s", " ".join(cmd3))
     if ffmpeg_run(cmd3) and out.exists() and out.stat().st_size > 0:
-        logger.info("✅ Шакал (минимальный) применён: %s", out)
+        logger.info("✅ Шакал (простой) speed=%s: %s", speed, out)
         return out
 
     logger.error("❌ Шакал: все попытки не удались")
@@ -3569,54 +3586,11 @@ async def _do_download(user, status_msg, context):
 
         # Шакал
         elif fmt == "shakal":
-            logger.warning("Шакал: ffmpeg_ok=%s, FFMPEG_LOCATION=%s", ffmpeg_ok(), FFMPEG_LOCATION)
+            logger.warning("Шакал: speed=%s, bass=%s, ffmpeg_ok=%s", speed, context.user_data.get("bass_boost", False), ffmpeg_ok())
             if ffmpeg_ok():
-                dur = await asyncio.get_event_loop().run_in_executor(None, get_video_duration, current)
-
-                # Скорость ДО шакал-эффекта
-                if speed != 1.0:
-                    await status_msg.edit_text(f"⚡ {speed}x...")
-                    speed_out = current.with_stem(current.stem + "_shakalspeed").with_suffix(".mp4")
-                    atempo_parts = []
-                    rem = speed
-                    while rem > 2.0:
-                        atempo_parts.append("atempo=2.0"); rem /= 2.0
-                    while rem < 0.5:
-                        atempo_parts.append("atempo=0.5"); rem /= 0.5
-                    atempo_parts.append(f"atempo={rem}")
-                    # Пробуем с аудио
-                    speed_cmd = [
-                        "ffmpeg", "-y", "-i", str(current),
-                        "-vf", f"setpts={1/speed}*PTS",
-                        "-af", ",".join(atempo_parts),
-                        "-c:v", "libx264", "-preset", "fast",
-                        str(speed_out),
-                    ]
-                    logger.warning("Shakal speed cmd: %s", " ".join(speed_cmd))
-                    ok = await asyncio.get_event_loop().run_in_executor(None, ffmpeg_run, speed_cmd)
-                    if not ok or not speed_out.exists() or speed_out.stat().st_size == 0:
-                        # Фоллбэк: без аудио (файл может не иметь звуковой дорожки)
-                        logger.warning("Shakal speed с аудио не сработал, пробуем без аудио")
-                        speed_out.unlink(missing_ok=True)
-                        speed_cmd_noaudio = [
-                            "ffmpeg", "-y", "-i", str(current),
-                            "-vf", f"setpts={1/speed}*PTS",
-                            "-an",
-                            "-c:v", "libx264", "-preset", "fast",
-                            str(speed_out),
-                        ]
-                        logger.warning("Shakal speed (no audio) cmd: %s", " ".join(speed_cmd_noaudio))
-                        ok = await asyncio.get_event_loop().run_in_executor(None, ffmpeg_run, speed_cmd_noaudio)
-                    if ok and speed_out.exists() and speed_out.stat().st_size > 0:
-                        files_to_clean.append(speed_out)
-                        current = speed_out
-                        logger.info("✅ Shakal speed %sx applied", speed)
-                    else:
-                        logger.error("❌ Shakal speed не удалось, продолжаем без ускорения")
-
-                await status_msg.edit_text("🗿 Шакалим...")
-                new = await asyncio.get_event_loop().run_in_executor(None, apply_shakal, current)
-                logger.warning("Шакал результат: %s → %s", current, new)
+                label = f"🗿 Шакалим{' ⚡' + str(speed) + 'x' if speed != 1.0 else ''}..."
+                await status_msg.edit_text(label)
+                new = await asyncio.get_event_loop().run_in_executor(None, apply_shakal, current, speed)
                 if new != current:
                     files_to_clean.append(new)
                     current = new
