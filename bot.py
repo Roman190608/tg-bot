@@ -111,12 +111,36 @@ def _setup_ffmpeg():
     try:
         import imageio_ffmpeg
         ff_exe = imageio_ffmpeg.get_ffmpeg_exe()
-        if ff_exe:
-            _set(str(Path(ff_exe).parent))
-            logger.info("✅ ffmpeg imageio: %s", ff_exe)
+        if ff_exe and Path(ff_exe).exists():
+            # Бинарник может называться ffmpeg-linux64-v4.2.2, а не "ffmpeg"
+            # Создаём симлинки в /tmp/ffmpeg_bin/
+            link_dir = Path("/tmp/ffmpeg_bin")
+            link_dir.mkdir(exist_ok=True)
+            ffmpeg_link = link_dir / "ffmpeg"
+            ffprobe_link = link_dir / "ffprobe"
+            # ffmpeg симлинк
+            if not ffmpeg_link.exists():
+                try:
+                    ffmpeg_link.symlink_to(ff_exe)
+                except Exception:
+                    import shutil as sh
+                    sh.copy2(ff_exe, str(ffmpeg_link))
+                    ffmpeg_link.chmod(0o755)
+            # ffprobe — imageio-ffmpeg может не содержать его,
+            # но ffmpeg сам умеет работать как ffprobe через -i
+            if not ffprobe_link.exists():
+                ff_dir = Path(ff_exe).parent
+                probe_candidates = list(ff_dir.glob("ffprobe*"))
+                if probe_candidates:
+                    try:
+                        ffprobe_link.symlink_to(probe_candidates[0])
+                    except Exception:
+                        pass
+            _set(str(link_dir))
+            logger.info("✅ ffmpeg imageio: %s → %s", ff_exe, link_dir)
             return
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("imageio-ffmpeg ошибка: %s", e)
 
     logger.warning("⚠️ ffmpeg НЕ НАЙДЕН — обработка видео ограничена")
 
@@ -921,23 +945,46 @@ def _save_user_prefs(user_id: int, context):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def ffmpeg_ok() -> bool:
+    if FFMPEG_LOCATION:
+        return True
     return shutil.which("ffmpeg") is not None
+
+
+def _ffmpeg_cmd() -> str:
+    """Возвращает путь к ffmpeg бинарнику."""
+    if FFMPEG_LOCATION:
+        candidate = Path(FFMPEG_LOCATION) / "ffmpeg"
+        if candidate.exists():
+            return str(candidate)
+    return "ffmpeg"
 
 
 def ffmpeg_run(cmd: list) -> bool:
     if not ffmpeg_ok():
         logger.warning("ffmpeg недоступен")
         return False
+    # Подставляем полный путь к ffmpeg
+    if cmd and cmd[0] == "ffmpeg":
+        cmd = [_ffmpeg_cmd()] + cmd[1:]
     result = subprocess.run(cmd, capture_output=True, timeout=300)
     if result.returncode != 0:
         logger.error("ffmpeg error: %s", result.stderr.decode()[:500])
     return result.returncode == 0
 
 
+def _ffprobe_cmd() -> str:
+    """Возвращает путь к ffprobe бинарнику."""
+    if FFMPEG_LOCATION:
+        candidate = Path(FFMPEG_LOCATION) / "ffprobe"
+        if candidate.exists():
+            return str(candidate)
+    return "ffprobe"
+
+
 def get_video_duration(path: Path) -> float:
     try:
         r = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+            [_ffprobe_cmd(), "-v", "error", "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
             capture_output=True, text=True, timeout=15,
         )
@@ -948,6 +995,9 @@ def get_video_duration(path: Path) -> float:
 
 async def ffmpeg_with_progress(cmd: list, status_msg, label: str, duration: float = 0) -> bool:
     """Запускает ffmpeg с прогресс-баром."""
+    # Подставляем полный путь к ffmpeg
+    if cmd and cmd[0] == "ffmpeg":
+        cmd = [_ffmpeg_cmd()] + cmd[1:]
     # Вставляем -progress перед выходным файлом
     cmd_prog = cmd[:-1] + ["-progress", "pipe:1", "-nostats", cmd[-1]]
     try:
