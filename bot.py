@@ -1306,6 +1306,9 @@ def _ydl_base_opts(url: str = "") -> dict:
     if "pinterest" in url_lower or "pin.it" in url_lower:
         opts["no_check_formats"] = True
         opts["format_sort"] = ["res", "ext:mp4:jpg"]
+        opts["format_sort_force"] = True
+        opts["check_formats"] = False
+        opts["ignore_no_formats_error"] = True
 
     # Instagram — referer, app ID, не проверять форматы
     if "instagram.com" in url_lower or "instagr.am" in url_lower:
@@ -1477,8 +1480,8 @@ def _cobalt_try_download(url: str, output_path: Path, shortcode: str) -> Path | 
     }).encode("utf-8")
 
     for api_url in instances:
-        endpoint = api_url.rstrip("/")
-        logger.info("IG Cobalt: пробую %s", endpoint)
+        endpoint = api_url.rstrip("/") + "/"
+        logger.warning("IG Cobalt: пробую %s", endpoint)
 
         headers = {
             "Content-Type": "application/json",
@@ -1488,24 +1491,28 @@ def _cobalt_try_download(url: str, output_path: Path, shortcode: str) -> Path | 
 
         raw = _ig_http_request(endpoint, headers=headers, data=body, timeout=12)
         if not raw:
+            logger.warning("IG Cobalt: %s — нет ответа", endpoint)
             continue
 
         try:
             resp = json.loads(raw.decode("utf-8", errors="replace"))
         except (json.JSONDecodeError, UnicodeDecodeError):
+            logger.warning("IG Cobalt: %s — не JSON (%d bytes)", endpoint, len(raw))
             continue
 
         status = resp.get("status")
         dl_url = resp.get("url")
+        logger.warning("IG Cobalt: %s → status=%s, url=%s", endpoint, status, bool(dl_url))
 
         if status == "error":
-            err_code = resp.get("error", {}).get("code", "unknown")
-            logger.debug("Cobalt %s error: %s", endpoint, err_code)
+            err = resp.get("error", {})
+            err_code = err.get("code", "") if isinstance(err, dict) else str(err)
+            logger.warning("IG Cobalt %s error: %s", endpoint, err_code)
             continue
 
         # status: tunnel / redirect / stream — есть url для скачивания
         if dl_url and status in ("tunnel", "redirect", "stream"):
-            logger.info("IG Cobalt (%s): нашёл URL (%s)", endpoint, status)
+            logger.warning("IG Cobalt (%s): нашёл URL (%s)", endpoint, status)
             result = _ig_download_file(dl_url, output_path, shortcode, "mp4")
             if result:
                 return result
@@ -1529,6 +1536,7 @@ def _cobalt_try_download(url: str, output_path: Path, shortcode: str) -> Path | 
                     if result:
                         return result
 
+    logger.warning("IG Cobalt: все инстансы не сработали")
     return None
 
 
@@ -1548,12 +1556,14 @@ def _ddinstagram_try_download(url: str, output_path: Path, shortcode: str) -> Pa
     }
 
     for test_url in test_urls:
-        logger.info("IG ddinstagram: %s", test_url)
+        logger.warning("IG ddinstagram: %s", test_url)
         raw = _ig_http_request(test_url, headers=headers, timeout=12)
         if not raw:
+            logger.warning("IG ddinstagram: %s — нет ответа", test_url)
             continue
 
         html = raw.decode("utf-8", errors="replace")
+        logger.warning("IG ddinstagram: получил %d chars", len(html))
 
         # Ищем og:video
         for pat in [
@@ -1597,9 +1607,10 @@ def _ig_embed_try_download(url: str, output_path: Path, shortcode: str) -> Path 
         "Accept": "text/html,*/*",
         "Referer": "https://www.instagram.com/",
     }
-    logger.info("IG embed: %s", embed_url)
+    logger.warning("IG embed: %s", embed_url)
     raw = _ig_http_request(embed_url, headers=headers, timeout=12)
     if not raw:
+        logger.warning("IG embed: нет ответа")
         return None
 
     html = raw.decode("utf-8", errors="replace")
@@ -1668,11 +1679,11 @@ async def download_video(
     # Instagram — сначала пробуем прямой метод (без yt-dlp)
     is_instagram = any(p in url_lower for p in ["instagram.com", "instagr.am"])
     if is_instagram and fmt in ("video", "gif", "circle"):
-        logger.info("IG: пробуем прямой загрузчик для %s", url)
+        logger.warning("IG: пробуем прямой загрузчик для %s", url)
         ig_result = await _instagram_direct_download(url, output_path, fmt)
         if ig_result:
             return ig_result
-        logger.info("IG: прямой метод не сработал, пробуем yt-dlp")
+        logger.warning("IG: прямой метод не сработал, пробуем yt-dlp")
 
     format_str = QUALITY_OPTIONS.get(quality, QUALITY_OPTIONS["best"])
     if fmt in ("audio", "wav", "flac"):
@@ -1685,6 +1696,7 @@ async def download_video(
         "pinterest.com", "pin.it", "reddit.com", "dailymotion.com", "dai.ly",
         "instagram.com", "instagr.am",
     ])
+    is_pinterest = any(p in str(url).lower() for p in ["pinterest.com", "pin.it"])
     if is_simple_platform and fmt not in ("audio", "wav", "flac"):
         format_str = "best"
 
@@ -1718,6 +1730,16 @@ async def download_video(
         "merge_output_format": None if is_simple_platform else ("mp4" if fmt not in ("audio", "wav", "flac") else None),
         "progress_hooks": [progress_hook],
     })
+
+    # Pinterest — максимально мягкие настройки формата
+    if is_pinterest:
+        opts["format"] = "bv*+ba/bv*/ba*/b*/best"
+        opts["no_check_formats"] = True
+        opts["ignore_no_formats_error"] = True
+        opts["check_formats"] = False
+        opts["format_sort_force"] = True
+        opts["compat_opts"] = {"format-spec"}
+        opts.pop("merge_output_format", None)
 
     # Аудио постпроцессоры
     if fmt in ("audio", "wav", "flac"):
@@ -1764,9 +1786,25 @@ async def download_video(
                 last_update["pct"] = -1
             return await loop.run_in_executor(None, _download)
         except Exception as e:
-            if "CANCELLED" in str(e):
+            err_str = str(e)
+            if "CANCELLED" in err_str:
                 return None
             logger.error("Попытка %d/3: %s", attempt + 1, e)
+            # Instagram: «login required» — ретрай бесполезен
+            if is_instagram and ("login required" in err_str.lower() or "rate-limit" in err_str.lower()):
+                logger.error("IG: требуется авторизация — ретрай отменён")
+                cancel_flag["_ig_login_required"] = True
+                break
+            # Pinterest: «format not available» — пробуем без указания формата
+            if is_pinterest and "format" in err_str.lower() and "not available" in err_str.lower():
+                if attempt == 0:
+                    logger.warning("Pinterest: формат недоступен — пробую без формата")
+                    opts["format"] = None
+                    opts.pop("format_sort", None)
+                    opts.pop("format_sort_force", None)
+                    continue
+                logger.error("Pinterest: формат недоступен — ретрай отменён")
+                break
     return None
 
 
@@ -3065,7 +3103,21 @@ async def _do_download(user, status_msg, context):
             await status_msg.edit_text("❌ Отменено.")
             return
         if not file_path or not file_path.exists():
-            await status_msg.edit_text("❌ Не удалось скачать.")
+            # Instagram — специальное сообщение
+            if cancel_flag.get("_ig_login_required"):
+                ig_msg = (
+                    "❌ Instagram требует авторизацию.\n\n"
+                    "Instagram заблокировал анонимный доступ.\n"
+                    "Для работы нужен файл cookies.txt:\n\n"
+                    "1️⃣ Открой Instagram в Chrome\n"
+                    "2️⃣ Установи расширение «Get cookies.txt LOCALLY»\n"
+                    "3️⃣ Экспортируй куки для instagram.com\n"
+                    "4️⃣ Положи файл cookies.txt в папку бота\n"
+                    "5️⃣ Перезапусти бота"
+                )
+                await status_msg.edit_text(ig_msg)
+            else:
+                await status_msg.edit_text("❌ Не удалось скачать.")
             return
 
         files_to_clean.append(file_path)
