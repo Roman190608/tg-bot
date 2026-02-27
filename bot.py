@@ -14,6 +14,8 @@ import random
 import shutil
 import glob as glob_module
 import sys
+import urllib.request
+import urllib.error
 from pathlib import Path
 from datetime import datetime, date, time as dtime
 
@@ -1345,10 +1347,232 @@ async def download_thumbnail(url: str, output_path: Path) -> Path | None:
         return None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# INSTAGRAM — прямой загрузчик (без куки, без yt-dlp)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _ig_extract_shortcode(url: str) -> str | None:
+    """Извлекает shortcode из Instagram URL."""
+    patterns = [
+        r'instagram\.com/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)',
+        r'instagr\.am/(?:p|reel)/([A-Za-z0-9_-]+)',
+    ]
+    for pat in patterns:
+        m = re.search(pat, url)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _ig_fetch_url(url: str, headers: dict = None) -> str | None:
+    """Загружает страницу и возвращает текст."""
+    if headers is None:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        }
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        logger.debug("IG fetch %s failed: %s", url, e)
+        return None
+
+
+def _ig_method_embed(shortcode: str) -> str | None:
+    """Метод 1: парсинг embed-страницы Instagram."""
+    embed_url = f"https://www.instagram.com/p/{shortcode}/embed/"
+    html = _ig_fetch_url(embed_url)
+    if not html:
+        return None
+
+    # Ищем video_url в JSON внутри HTML
+    patterns = [
+        r'"video_url"\s*:\s*"(https?://[^"]+)"',
+        r'"contentUrl"\s*:\s*"(https?://[^"]+)"',
+        r'video_url=([^&"\']+)',
+        r'"src"\s*:\s*"(https?://scontent[^"]+\.mp4[^"]*)"',
+        r'"og:video"\s+content="(https?://[^"]+)"',
+        r'<source\s+src="(https?://[^"]+)"',
+    ]
+    for pat in patterns:
+        m = re.search(pat, html)
+        if m:
+            video_url = m.group(1).replace("\\u0026", "&").replace("\\/", "/")
+            logger.info("IG embed method found URL for %s", shortcode)
+            return video_url
+    return None
+
+
+def _ig_method_graphql(shortcode: str) -> dict | None:
+    """Метод 2: Instagram GraphQL API (публичный, без куки)."""
+    # Instagram внутренний API — запрос инфо о посте по shortcode
+    gql_url = (
+        "https://www.instagram.com/graphql/query/?"
+        f"query_hash=b3055c01b4b222b8a47dc12b090e4e64&"
+        f"variables=%7B%22shortcode%22%3A%22{shortcode}%22%7D"
+    )
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "*/*",
+        "X-IG-App-ID": "936619743392459",
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": f"https://www.instagram.com/p/{shortcode}/",
+    }
+    text = _ig_fetch_url(gql_url, headers)
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+        media = data.get("data", {}).get("shortcode_media")
+        if media:
+            return media
+    except (json.JSONDecodeError, KeyError):
+        pass
+    return None
+
+
+def _ig_method_webpage(shortcode: str) -> str | None:
+    """Метод 3: парсинг обычной веб-страницы Instagram."""
+    page_url = f"https://www.instagram.com/p/{shortcode}/"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+            "Version/17.0 Mobile/15E148 Safari/604.1"
+        ),
+        "Accept": "text/html,application/xhtml+xml,*/*",
+        "Accept-Language": "en-US,en;q=0.5",
+    }
+    html = _ig_fetch_url(page_url, headers)
+    if not html:
+        return None
+
+    # Ищем video_url в embedded JSON (shared_data, additional_data)
+    for pat in [
+        r'"video_url"\s*:\s*"(https?:[^"]+)"',
+        r'"video_versions"\s*:\s*\[\s*\{[^}]*"url"\s*:\s*"(https?:[^"]+)"',
+        r'"contentUrl"\s*:\s*"(https?:[^"]+\.mp4[^"]*)"',
+    ]:
+        m = re.search(pat, html)
+        if m:
+            url = m.group(1).replace("\\u0026", "&").replace("\\/", "/")
+            logger.info("IG webpage method found URL for %s", shortcode)
+            return url
+    return None
+
+
+async def _instagram_direct_download(url: str, output_path: Path, fmt: str = "video") -> Path | None:
+    """
+    Скачивает Instagram видео/рилс/пост напрямую — БЕЗ куки и yt-dlp.
+    Три метода: embed → graphql → webpage.
+    """
+    shortcode = _ig_extract_shortcode(url)
+    if not shortcode:
+        return None
+
+    loop = asyncio.get_running_loop()
+
+    def _try_download() -> Path | None:
+        video_url = None
+        image_urls = []
+
+        # Метод 1: Embed
+        video_url = _ig_method_embed(shortcode)
+
+        # Метод 2: GraphQL
+        if not video_url:
+            media = _ig_method_graphql(shortcode)
+            if media:
+                if media.get("is_video"):
+                    video_url = media.get("video_url")
+                elif media.get("display_url"):
+                    image_urls = [media["display_url"]]
+                # Carousel (несколько фото/видео)
+                edges = media.get("edge_sidecar_to_children", {}).get("edges", [])
+                if edges:
+                    for edge in edges:
+                        node = edge.get("node", {})
+                        if node.get("is_video") and node.get("video_url"):
+                            video_url = node["video_url"]
+                            break
+                        elif node.get("display_url"):
+                            image_urls.append(node["display_url"])
+
+        # Метод 3: Webpage scraping
+        if not video_url:
+            video_url = _ig_method_webpage(shortcode)
+
+        # Скачиваем найденный URL
+        target_url = video_url
+        ext = "mp4"
+        if not target_url and image_urls:
+            target_url = image_urls[0]
+            ext = "jpg"
+
+        if not target_url:
+            logger.warning("IG: все методы провалились для %s", shortcode)
+            return None
+
+        # Прямое скачивание
+        out_file = output_path / f"{shortcode}.{ext}"
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Referer": "https://www.instagram.com/",
+        }
+        req = urllib.request.Request(target_url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                with open(out_file, "wb") as f:
+                    while True:
+                        chunk = resp.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+            if out_file.exists() and out_file.stat().st_size > 1000:
+                logger.info("IG: успешно скачан %s (%s bytes)", shortcode, out_file.stat().st_size)
+                return out_file
+        except Exception as e:
+            logger.error("IG: скачивание %s ошибка: %s", shortcode, e)
+
+        return None
+
+    try:
+        return await loop.run_in_executor(None, _try_download)
+    except Exception as e:
+        logger.error("IG direct download error: %s", e)
+        return None
+
+
 async def download_video(
     url, quality, output_path, status_msg, cancel_flag,
     fmt="video", lang="ru", audio_codec="mp3",
 ) -> Path | None:
+    url_lower = str(url).lower()
+
+    # Instagram — сначала пробуем прямой метод (без yt-dlp)
+    is_instagram = any(p in url_lower for p in ["instagram.com", "instagr.am"])
+    if is_instagram and fmt in ("video", "gif", "circle"):
+        logger.info("IG: пробуем прямой загрузчик для %s", url)
+        ig_result = await _instagram_direct_download(url, output_path, fmt)
+        if ig_result:
+            return ig_result
+        logger.info("IG: прямой метод не сработал, пробуем yt-dlp")
+
     format_str = QUALITY_OPTIONS.get(quality, QUALITY_OPTIONS["best"])
     if fmt in ("audio", "wav", "flac"):
         format_str = "bestaudio/best"
