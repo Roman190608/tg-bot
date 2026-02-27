@@ -1307,10 +1307,12 @@ def _ydl_base_opts(url: str = "") -> dict:
         opts["no_check_formats"] = True
         opts["format_sort"] = ["res", "ext:mp4:jpg"]
 
-    # Instagram — referer и app ID
-    if "instagram.com" in url_lower:
+    # Instagram — referer, app ID, не проверять форматы
+    if "instagram.com" in url_lower or "instagr.am" in url_lower:
         opts["http_headers"]["Referer"] = "https://www.instagram.com/"
         opts["http_headers"]["X-IG-App-ID"] = "936619743392459"
+        opts["no_check_formats"] = True
+        opts["format_sort"] = ["res", "ext:mp4"]
 
     if FFMPEG_LOCATION:
         opts["ffmpeg_location"] = FFMPEG_LOCATION
@@ -1678,9 +1680,10 @@ async def download_video(
     elif fmt in ("gif", "circle"):
         format_str = "best[ext=mp4]/best[ext=webm]/best"
 
-    # Pinterest/Twitch/Reddit — ограниченные форматы, используем best
+    # Pinterest/Twitch/Reddit/Instagram — ограниченные форматы, используем best
     is_simple_platform = any(p in str(url).lower() for p in [
         "pinterest.com", "pin.it", "reddit.com", "dailymotion.com", "dai.ly",
+        "instagram.com", "instagr.am",
     ])
     if is_simple_platform and fmt not in ("audio", "wav", "flac"):
         format_str = "best"
