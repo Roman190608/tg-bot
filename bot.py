@@ -1,5 +1,5 @@
 """
-Telegram Video Downloader Bot v1.6
+Telegram Video Downloader Bot v1.7
 Refactored: все баги исправлены, код реструктурирован.
 """
 
@@ -35,7 +35,7 @@ import yt_dlp
 
 BOT_TOKEN    = os.environ.get("BOT_TOKEN", "TOKEN_HERE")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
-BOT_VERSION  = os.environ.get("BOT_VERSION", "1.6")
+BOT_VERSION  = os.environ.get("BOT_VERSION", "1.7")
 ADMIN_ID     = int(os.environ.get("ADMIN_ID", "123456789"))
 DAILY_LIMIT  = 20
 HISTORY_SIZE = 10
@@ -318,9 +318,12 @@ TEXTS = {
             "📌 Как пользоваться\n"
             "━━━━━━━━━━━━━━━━━\n\n"
             "1️⃣ Отправь ссылку на видео\n"
-            "2️⃣ Выбери формат: видео / MP3 / WAV / FLAC / GIF / кружочек\n"
+            "2️⃣ Выбери формат: видео / MP3 / WAV / FLAC / GIF / кружочек / 🗿 шакал\n"
             "3️⃣ Выбери качество и уровень звука\n"
-            "4️⃣ Ориентация, субтитры, скорость — или «Скачать»\n\n"
+            "4️⃣ Ориентация, субтитры, скорость, басс-буст — или «Скачать»\n\n"
+            "🌀 GIF — поддержка скорости!\n"
+            "🔊 Басс-буст — мощный бас на видео\n"
+            "🗿 Шакал — видео в убитом качестве (мем)\n\n"
             "🎭 Стикерпаки: отправь ссылку t.me/addstickers/...\n"
             "🔍 Поиск YouTube: кнопка в меню\n"
             "🔗 Объединить видео: кнопка в меню\n\n"
@@ -350,6 +353,7 @@ TEXTS = {
         "fmt_circle": "⭕ Кружочек",
         "fmt_thumb": "🖼 Обложка",
         "fmt_playlist": "📋 Плейлист (ZIP)",
+        "fmt_shakal": "🗿 Шакал",
         "audio_fmt_title": "🎵 Выбери формат аудио:",
         "sticker_downloading": "🎭 Скачиваю стикерпак...",
         "sticker_done": "🎭 Стикерпак готов! {n} стикеров",
@@ -372,6 +376,11 @@ TEXTS = {
         "circle_speed": "⚡ {speed}x",
         "circle_audio": "🔊 {label}",
         "circle_download": "⬇️ Скачать",
+        "gif_menu": "🌀 GIF — настрой или скачай:",
+        "gif_speed": "⚡ {speed}x",
+        "gif_download": "⬇️ Скачать",
+        "bass_on": "🔊 Басс-буст ✅",
+        "bass_off": "🔊 Басс-буст ❌",
         "trim_yes": "✂️ Обрезать",
         "trim_no": "⏭ Без обрезки",
         "orient_original": "📱 Оригинал",
@@ -457,9 +466,12 @@ TEXTS = {
             "📌 How to use\n"
             "━━━━━━━━━━━━━━━━━\n\n"
             "1️⃣ Send a video link\n"
-            "2️⃣ Choose format: video / MP3 / WAV / FLAC / GIF / circle\n"
+            "2️⃣ Choose format: video / MP3 / WAV / FLAC / GIF / circle / 🗿 deep-fried\n"
             "3️⃣ Choose quality and audio level\n"
-            "4️⃣ Orientation, subs, speed — or Download\n\n"
+            "4️⃣ Orientation, subs, speed, bass boost — or Download\n\n"
+            "🌀 GIF — speed control!\n"
+            "🔊 Bass boost — heavy bass on videos\n"
+            "🗿 Deep-fried — max compression meme quality\n\n"
             "🎭 Stickerpacks: send t.me/addstickers/... link\n"
             "🔍 YouTube search: button in menu\n"
             "🔗 Merge videos: button in menu\n\n"
@@ -489,6 +501,7 @@ TEXTS = {
         "fmt_circle": "⭕ Circle",
         "fmt_thumb": "🖼 Thumbnail",
         "fmt_playlist": "📋 Playlist (ZIP)",
+        "fmt_shakal": "🗿 Deep-fried",
         "audio_fmt_title": "🎵 Choose audio format:",
         "sticker_downloading": "🎭 Downloading stickerpack...",
         "sticker_done": "🎭 Stickerpack ready! {n} stickers",
@@ -511,6 +524,11 @@ TEXTS = {
         "circle_speed": "⚡ {speed}x",
         "circle_audio": "🔊 {label}",
         "circle_download": "⬇️ Download",
+        "gif_menu": "🌀 GIF — adjust or download:",
+        "gif_speed": "⚡ {speed}x",
+        "gif_download": "⬇️ Download",
+        "bass_on": "🔊 Bass boost ✅",
+        "bass_off": "🔊 Bass boost ❌",
         "trim_yes": "✂️ Trim",
         "trim_no": "⏭ No trim",
         "orient_original": "📱 Original",
@@ -690,6 +708,30 @@ PATCH_NOTES = {
             "🔍 YouTube search right in the bot\n"
             "🎧 SoundCloud — music without borders\n\n"
             "Now supports 11+ platforms! 🔥"
+        ),
+    },
+    "1.7": {
+        "ru": (
+            "🎉 Обновление v1.7 — Новые эффекты\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🌀 Ускорение GIF — теперь можно менять скорость\n"
+            "🔊 Басс-буст — мощный бас на видео\n"
+            "🗿 Шакал — видео в максимально убитом качестве\n"
+            "📸 Instagram — исправлена загрузка (куки)\n"
+            "📌 Pinterest — исправлен формат скачивания\n"
+            "🔧 ffmpeg через pip — работает на любом хостинге\n\n"
+            "Шакалим! 🗿"
+        ),
+        "en": (
+            "🎉 Update v1.7 — New Effects\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🌀 GIF speed — change playback speed\n"
+            "🔊 Bass boost — heavy bass on videos\n"
+            "🗿 Deep-fried — maximum compression meme quality\n"
+            "📸 Instagram — download fixed (cookies)\n"
+            "📌 Pinterest — format fix\n"
+            "🔧 ffmpeg via pip — works on any hosting\n\n"
+            "Deep-fry everything! 🗿"
         ),
     },
     "1.6": {
@@ -1023,6 +1065,38 @@ def compress_video(path: Path, target_mb: float = 45.0) -> Path:
     return out if ffmpeg_run(cmd) and out.exists() else path
 
 
+def apply_bass_boost(path: Path) -> Path:
+    """Басс-буст: усиливает низкие частоты."""
+    out = path.with_stem(path.stem + "_bass")
+    cmd = [
+        "ffmpeg", "-y", "-i", str(path),
+        "-af", "bass=g=25:f=50:w=0.8,equalizer=f=100:t=h:w=200:g=10,volume=1.5,alimiter=limit=0.95",
+        "-c:v", "copy",
+        str(out),
+    ]
+    return out if ffmpeg_run(cmd) and out.exists() else path
+
+
+def apply_shakal(path: Path) -> Path:
+    """Шакал: максимально убитое качество (мем-эффект)."""
+    out = path.with_stem(path.stem + "_shakal").with_suffix(".mp4")
+    cmd = [
+        "ffmpeg", "-y", "-i", str(path),
+        "-vf", (
+            "scale=144:-2,"                          # 144p
+            "noise=alls=40:allf=t,"                   # шум
+            "eq=contrast=1.8:brightness=0.05:saturation=2.5,"  # пережатые цвета
+            "unsharp=5:5:2.0"                         # уродский шарп
+        ),
+        "-c:v", "libx264", "-crf", "45", "-preset", "ultrafast",
+        "-b:v", "50k", "-maxrate", "80k", "-bufsize", "40k",
+        "-c:a", "aac", "-b:a", "24k", "-ar", "22050", "-ac", "1",
+        "-movflags", "+faststart",
+        str(out),
+    ]
+    return out if ffmpeg_run(cmd) and out.exists() else path
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # КЛАВИАТУРЫ
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1085,6 +1159,7 @@ def format_keyboard(lang="ru", default_fmt="", url="") -> InlineKeyboardMarkup:
         [btn("fmt_gif", "fmt_gif"), btn("fmt_circle", "fmt_circle")],
         [btn("fmt_thumb", "fmt_thumb"), btn("fmt_playlist", "fmt_playlist")],
         [btn("fmt_wav", "fmt_wav"), btn("fmt_flac", "fmt_flac")],
+        [btn("fmt_shakal", "fmt_shakal")],
     ]
     if url and re.search(STICKER_PATTERN, url, re.IGNORECASE):
         rows.append([btn("fmt_sticker", "fmt_sticker")])
@@ -1125,16 +1200,25 @@ def speed_keyboard(lang="ru") -> InlineKeyboardMarkup:
     ])
 
 
-def orientation_keyboard(subs_on=False, speed="1.0", lang="ru") -> InlineKeyboardMarkup:
+def orientation_keyboard(subs_on=False, speed="1.0", bass=False, lang="ru") -> InlineKeyboardMarkup:
     T = TEXTS.get(lang, TEXTS["ru"])
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(T["orient_original"], callback_data="orient_original"),
          InlineKeyboardButton(T["orient_square"], callback_data="orient_square")],
         [InlineKeyboardButton(T["orient_landscape"], callback_data="orient_landscape")],
         [InlineKeyboardButton(T["subs_on"] if subs_on else T["subs_off"], callback_data="orient_toggle_subs"),
-         InlineKeyboardButton(T["speed_btn"].format(speed=speed), callback_data="orient_speed")],
-        [InlineKeyboardButton(T["trim_btn"], callback_data="orient_trim")],
+         InlineKeyboardButton(T["bass_on"] if bass else T["bass_off"], callback_data="orient_bass")],
+        [InlineKeyboardButton(T["speed_btn"].format(speed=speed), callback_data="orient_speed"),
+         InlineKeyboardButton(T["trim_btn"], callback_data="orient_trim")],
         [InlineKeyboardButton(T["download_btn"], callback_data="orient_download")],
+    ])
+
+
+def gif_menu_keyboard(speed="1.0", lang="ru") -> InlineKeyboardMarkup:
+    T = TEXTS.get(lang, TEXTS["ru"])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(T["gif_speed"].format(speed=speed), callback_data="gif_speed")],
+        [InlineKeyboardButton(T["gif_download"], callback_data="gif_download")],
     ])
 
 
@@ -1223,7 +1307,7 @@ def patchnote_keyboard(version: str) -> InlineKeyboardMarkup:
 def settings_keyboard(theme, fmt, quality, lang="ru") -> InlineKeyboardMarkup:
     T = TEXTS.get(lang, TEXTS["ru"])
     theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
-    fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕"}
+    fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿"}
     q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(T["theme_toggle"].format(theme=theme_label), callback_data="settings_theme")],
@@ -1678,7 +1762,7 @@ async def download_video(
 
     # Instagram — сначала пробуем прямой метод (без yt-dlp)
     is_instagram = any(p in url_lower for p in ["instagram.com", "instagr.am"])
-    if is_instagram and fmt in ("video", "gif", "circle"):
+    if is_instagram and fmt in ("video", "gif", "circle", "shakal"):
         logger.warning("IG: пробуем прямой загрузчик для %s", url)
         ig_result = await _instagram_direct_download(url, output_path, fmt)
         if ig_result:
@@ -1690,6 +1774,8 @@ async def download_video(
         format_str = "bestaudio/best"
     elif fmt in ("gif", "circle"):
         format_str = "best[ext=mp4]/best[ext=webm]/best"
+    elif fmt == "shakal":
+        format_str = "worst[ext=mp4]/worst/best[height<=360]"
 
     # Pinterest/Twitch/Reddit/Instagram — ограниченные форматы, используем best
     is_simple_platform = any(p in str(url).lower() for p in [
@@ -1697,7 +1783,7 @@ async def download_video(
         "instagram.com", "instagr.am",
     ])
     is_pinterest = any(p in str(url).lower() for p in ["pinterest.com", "pin.it"])
-    if is_simple_platform and fmt not in ("audio", "wav", "flac"):
+    if is_simple_platform and fmt not in ("audio", "wav", "flac", "shakal"):
         format_str = "best"
 
     last_update = {"pct": -1}
@@ -1733,7 +1819,8 @@ async def download_video(
 
     # Глобально: если ffmpeg не найден — отключаем мерж для ВСЕХ платформ
     if not FFMPEG_LOCATION:
-        opts["format"] = "best/bestvideo/bestaudio"
+        if fmt != "shakal":
+            opts["format"] = "best/bestvideo/bestaudio"
         opts["merge_output_format"] = None
         opts["postprocessors"] = []
 
@@ -2044,7 +2131,7 @@ async def _notify_admin(user, platform, fmt, context):
     try:
         fmt_labels = {"video": "🎬", "audio": "🎵", "gif": "🌀",
                       "circle": "⭕", "thumb": "🖼", "playlist": "📋",
-                      "wav": "🎵 WAV", "flac": "🎵 FLAC"}
+                      "wav": "🎵 WAV", "flac": "🎵 FLAC", "shakal": "🗿"}
         name = user.full_name or "?"
         username = f"@{user.username}" if user.username else ""
         await context.bot.send_message(
@@ -2285,11 +2372,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["waiting_trim"] = False
             fmt = context.user_data.get("format", "video")
             if fmt == "gif":
-                status_msg = await update.message.reply_text(
-                    f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
-                    reply_markup=cancel_keyboard(lang),
+                speed = context.user_data.get("speed", "1.0")
+                await update.message.reply_text(
+                    t(context, "gif_menu"),
+                    reply_markup=gif_menu_keyboard(speed, lang),
                 )
-                await _run_download(user, status_msg, context)
             elif fmt == "circle":
                 speed = context.user_data.get("speed", "1.0")
                 audio = context.user_data.get("audio", "normal")
@@ -2297,12 +2384,18 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     t(context, "circle_menu"),
                     reply_markup=circle_menu_keyboard(speed, audio, lang),
                 )
+            elif fmt == "shakal":
+                status_msg = await update.message.reply_text(
+                    f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
+                    reply_markup=cancel_keyboard(lang),
+                )
+                await _run_download(user, status_msg, context)
             else:
                 subs_on = context.user_data.get("subtitles", False)
                 speed = context.user_data.get("speed", "1.0")
                 await update.message.reply_text(
                     t(context, "step_orient"),
-                    reply_markup=orientation_keyboard(subs_on, speed, lang),
+                    reply_markup=orientation_keyboard(subs_on, speed, context.user_data.get("bass_boost", False), lang),
                 )
         return
 
@@ -2429,7 +2522,7 @@ async def cb_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         def_q = context.user_data.get("default_quality", "best")
         T = TEXTS.get(lang, TEXTS["ru"])
         theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
-        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕"}
+        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿"}
         q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
         await safe_edit(query,
                         T["settings_info"].format(theme=theme_label, fmt=fmt_labels.get(def_fmt, def_fmt), quality=q_labels.get(def_q, def_q)),
@@ -2596,6 +2689,10 @@ async def cb_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.update({"quality": "480", "audio": "normal", "orientation": "original"})
         await safe_edit(query, f"⭕ {platform}\n\n{t(context, 'step_trim_gif')}", reply_markup=trim_keyboard(lang))
 
+    elif fmt == "shakal":
+        context.user_data.update({"quality": "360", "audio": "normal", "orientation": "original"})
+        await safe_edit(query, f"🗿 {platform} • Шакал\n\n{t(context, 'step_trim')}", reply_markup=trim_keyboard(lang))
+
     elif fmt == "thumb":
         await safe_edit(query, "⏳ Скачиваю обложку...", reply_markup=cancel_keyboard(lang))
         await _run_download(query.from_user, query.message, context)
@@ -2651,7 +2748,7 @@ async def cb_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subs_on = context.user_data.get("subtitles", False)
     speed = context.user_data.get("speed", "1.0")
     await safe_edit(query, t(context, "step_orient"),
-                    reply_markup=orientation_keyboard(subs_on, speed, lang))
+                    reply_markup=orientation_keyboard(subs_on, speed, context.user_data.get("bass_boost", False), lang))
 
 
 async def cb_speed(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2667,9 +2764,14 @@ async def cb_speed(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         reply_markup=circle_menu_keyboard(speed, audio, lang))
         return
 
+    if context.user_data.pop("gif_speed_return", False):
+        await safe_edit(query, t(context, "gif_menu"),
+                        reply_markup=gif_menu_keyboard(speed, lang))
+        return
+
     subs_on = context.user_data.get("subtitles", False)
     await safe_edit(query, t(context, "step_orient"),
-                    reply_markup=orientation_keyboard(subs_on, speed, lang))
+                    reply_markup=orientation_keyboard(subs_on, speed, context.user_data.get("bass_boost", False), lang))
 
 
 async def cb_orientation(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2682,8 +2784,14 @@ async def cb_orientation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "orient_toggle_subs":
         context.user_data["subtitles"] = not subs_on
+        bass = context.user_data.get("bass_boost", False)
         await safe_edit(query, t(context, "step_orient"),
-                        reply_markup=orientation_keyboard(not subs_on, speed, lang))
+                        reply_markup=orientation_keyboard(not subs_on, speed, bass, lang))
+    elif data == "orient_bass":
+        context.user_data["bass_boost"] = not context.user_data.get("bass_boost", False)
+        bass = context.user_data["bass_boost"]
+        await safe_edit(query, t(context, "step_orient"),
+                        reply_markup=orientation_keyboard(subs_on, speed, bass, lang))
     elif data == "orient_speed":
         await safe_edit(query, t(context, "step_speed"), reply_markup=speed_keyboard(lang))
     elif data == "orient_trim":
@@ -2698,7 +2806,7 @@ async def cb_orientation(update: Update, context: ContextTypes.DEFAULT_TYPE):
         orient = data.replace("orient_", "")
         context.user_data["orientation"] = orient
         await safe_edit(query, t(context, "step_orient"),
-                        reply_markup=orientation_keyboard(subs_on, speed, lang))
+                        reply_markup=orientation_keyboard(subs_on, speed, context.user_data.get("bass_boost", False), lang))
 
 
 async def cb_circle(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2713,6 +2821,20 @@ async def cb_circle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["circle_audio_return"] = True
         await safe_edit(query, t(context, "step_audio"), reply_markup=audio_keyboard(lang))
     elif query.data == "circle_download":
+        await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
+                        reply_markup=cancel_keyboard(lang))
+        await _run_download(query.from_user, query.message, context)
+
+
+async def cb_gif_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    lang = get_lang(context)
+
+    if query.data == "gif_speed":
+        context.user_data["gif_speed_return"] = True
+        await safe_edit(query, t(context, "step_speed"), reply_markup=speed_keyboard(lang))
+    elif query.data == "gif_download":
         await safe_edit(query, f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
                         reply_markup=cancel_keyboard(lang))
         await _run_download(query.from_user, query.message, context)
@@ -2742,6 +2864,10 @@ async def cb_trim(update: Update, context: ContextTypes.DEFAULT_TYPE):
             audio = context.user_data.get("audio", "normal")
             await safe_edit(query, t(context, "circle_menu"),
                             reply_markup=circle_menu_keyboard(speed, audio, lang))
+        elif fmt == "gif":
+            speed = context.user_data.get("speed", "1.0")
+            await safe_edit(query, t(context, "gif_menu"),
+                            reply_markup=gif_menu_keyboard(speed, lang))
         else:
             await show_preview_or_download(query, context)
     else:
@@ -2880,7 +3006,7 @@ async def cb_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         theme_label = T["theme_dark"] if new == "dark" else T["theme_light"]
         def_fmt = context.user_data.get("default_format", "video")
         def_q = context.user_data.get("default_quality", "best")
-        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕"}
+        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿"}
         q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
         text = T["settings_info"].format(theme=theme_label, fmt=fmt_labels.get(def_fmt, def_fmt), quality=q_labels.get(def_q, def_q))
         try:
@@ -2914,7 +3040,7 @@ async def cb_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         theme = context.user_data.get("theme", "light")
         def_q = context.user_data.get("default_quality", "best")
         theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
-        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕"}
+        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿"}
         q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
         await safe_edit(query,
                         T["settings_info"].format(theme=theme_label, fmt=fmt_labels.get(fmt, fmt), quality=q_labels.get(def_q, def_q)),
@@ -2931,7 +3057,7 @@ async def cb_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         theme = context.user_data.get("theme", "light")
         def_fmt = context.user_data.get("default_format", "video")
         theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
-        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕"}
+        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿"}
         q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
         await safe_edit(query,
                         T["settings_info"].format(theme=theme_label, fmt=fmt_labels.get(def_fmt, def_fmt), quality=q_labels.get(quality, quality)),
@@ -3139,12 +3265,16 @@ async def _do_download(user, status_msg, context):
         if fmt == "gif":
             dur = await asyncio.get_event_loop().run_in_executor(None, get_video_duration, current)
             out_gif = current.with_suffix(".gif")
+            # GIF speed: добавляем setpts если speed != 1.0
+            speed_filter = f"setpts={1/speed}*PTS," if speed != 1.0 else ""
+            vf = f"{speed_filter}fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"
             cmd = [
                 "ffmpeg", "-y", "-i", str(current),
-                "-vf", "fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+                "-vf", vf,
                 "-loop", "0", str(out_gif),
             ]
-            await ffmpeg_with_progress(cmd, status_msg, "🌀 GIF...", dur)
+            est_dur = dur / speed if speed != 1.0 else dur
+            await ffmpeg_with_progress(cmd, status_msg, f"🌀 GIF{' ⚡' + str(speed) + 'x' if speed != 1.0 else ''}...", est_dur)
             if out_gif.exists():
                 current = out_gif
                 files_to_clean.append(current)
@@ -3164,6 +3294,16 @@ async def _do_download(user, status_msg, context):
             if out_circle.exists():
                 current = out_circle
                 files_to_clean.append(current)
+
+        # Шакал
+        elif fmt == "shakal":
+            if ffmpeg_ok():
+                dur = await asyncio.get_event_loop().run_in_executor(None, get_video_duration, current)
+                await status_msg.edit_text("🗿 Шакалим...")
+                new = await asyncio.get_event_loop().run_in_executor(None, apply_shakal, current)
+                if new != current:
+                    files_to_clean.append(new)
+                    current = new
 
         # Ориентация
         if fmt == "video" and orient != "original":
@@ -3213,6 +3353,15 @@ async def _do_download(user, status_msg, context):
             if current not in files_to_clean:
                 files_to_clean.append(current)
 
+        # Басс-буст
+        bass_boost = context.user_data.get("bass_boost", False)
+        if bass_boost and fmt in ("video", "shakal") and ffmpeg_ok():
+            await status_msg.edit_text("🔊 Басс-буст...")
+            new = await asyncio.get_event_loop().run_in_executor(None, apply_bass_boost, current)
+            if new != current:
+                files_to_clean.append(new)
+                current = new
+
         # Проверка размера
         file_size = current.stat().st_size
         if file_size > MAX_FILE_MB * 1024 * 1024:
@@ -3242,10 +3391,14 @@ async def _do_download(user, status_msg, context):
             caption = f"🌀 {platform} • GIF"
         elif fmt == "circle":
             caption = f"⭕ {platform}"
+        elif fmt == "shakal":
+            caption = f"🗿 {platform} • Шакал"
         else:
             caption = f"✅ {platform} • {ql}"
         if speed != 1.0:
             caption += f" • {speed}x"
+        if bass_boost:
+            caption += " • 🔊 Bass"
         if subs_warning:
             caption += f"\n{subs_warning}"
 
@@ -3260,6 +3413,9 @@ async def _do_download(user, status_msg, context):
                 await status_msg.reply_animation(animation=f, caption=caption, reply_markup=again_kb)
             elif fmt == "circle":
                 await status_msg.reply_video_note(video_note=f)
+            elif fmt == "shakal":
+                await status_msg.reply_video(video=f, caption=caption,
+                                             supports_streaming=True, reply_markup=again_kb)
             else:
                 await status_msg.reply_video(video=f, caption=caption,
                                              supports_streaming=True, reply_markup=again_kb)
@@ -3422,6 +3578,7 @@ def main():
     app.add_handler(CallbackQueryHandler(cb_speed, pattern="^speed_"))
     app.add_handler(CallbackQueryHandler(cb_orientation, pattern="^orient_"))
     app.add_handler(CallbackQueryHandler(cb_circle, pattern="^circle_"))
+    app.add_handler(CallbackQueryHandler(cb_gif_menu, pattern="^gif_"))
     app.add_handler(CallbackQueryHandler(cb_trim, pattern="^trim_"))
     app.add_handler(CallbackQueryHandler(cb_settings, pattern="^settings_|^setfmt_|^setquality_"))
     app.add_handler(CallbackQueryHandler(cb_patch_nav, pattern="^patch_nav_"))
