@@ -1085,7 +1085,16 @@ def ffmpeg_run(cmd: list) -> bool:
         cmd = [_ffmpeg_cmd()] + cmd[1:]
     result = subprocess.run(cmd, capture_output=True, timeout=300)
     if result.returncode != 0:
-        logger.error("ffmpeg error: %s", result.stderr.decode()[:500])
+        stderr = result.stderr.decode(errors="replace")
+        # Пропускаем баннер ffmpeg, показываем только ошибку
+        lines = stderr.strip().split("\n")
+        error_lines = [l for l in lines if not l.startswith("  ") and "Copyright" not in l
+                       and "configuration:" not in l and "built with" not in l
+                       and "ffmpeg version" not in l and "libav" not in l
+                       and "lib" not in l.strip()[:3]]
+        error_msg = "\n".join(error_lines[-15:]) if error_lines else stderr[-500:]
+        logger.error("ffmpeg error:\n%s", error_msg)
+        logger.error("ffmpeg cmd: %s", " ".join(str(c) for c in cmd))
     return result.returncode == 0
 
 
@@ -1154,7 +1163,7 @@ async def ffmpeg_with_progress(cmd: list, status_msg, label: str, duration: floa
 def apply_audio(path: Path, volume: float) -> Path:
     if volume == 1.0:
         return path
-    out = path.with_stem(path.stem + "_audio")
+    out = path.with_stem(path.stem + "_audio").with_suffix(".mp4")
     if volume == 0.0:
         cmd = ["ffmpeg", "-y", "-i", str(path), "-an", "-c:v", "copy", str(out)]
     else:
@@ -1167,14 +1176,20 @@ def apply_orientation(path: Path, orient: str) -> Path:
         return path
     if orient == "blur_bg":
         return apply_blur_bg(path)
-    out = path.with_stem(path.stem + "_orient")
+    out = path.with_stem(path.stem + "_orient").with_suffix(".mp4")
     if orient == "square":
-        # FIX: правильное экранирование запятой для ffmpeg
         vf = "crop=min(iw\\,ih):min(iw\\,ih),scale=720:720"
     else:
         vf = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2"
-    cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf, "-c:a", "copy", str(out)]
-    return out if ffmpeg_run(cmd) and out.exists() else path
+    cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
+           "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
+    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+        return out
+    # Fallback без аудио
+    out.unlink(missing_ok=True)
+    cmd2 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
+            "-c:v", "libx264", "-preset", "fast", "-an", str(out)]
+    return out if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0 else path
 
 
 def apply_trim(path: Path, start: str, end: str) -> Path:
@@ -1187,38 +1202,100 @@ def apply_mirror(path: Path, direction: str) -> Path:
     """Зеркалирование: horizontal (hflip) или vertical (vflip)."""
     if direction not in ("horizontal", "vertical"):
         return path
-    out = path.with_stem(path.stem + "_mirror")
+    out = path.with_stem(path.stem + "_mirror").with_suffix(".mp4")
     vf = "hflip" if direction == "horizontal" else "vflip"
-    cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf, "-c:a", "copy", str(out)]
+    # Попытка 1: re-encode video + copy audio
+    cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
+           "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
+    logger.warning("Mirror cmd: %s", " ".join(cmd))
     if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Зеркало (%s) применено: %s", direction, out)
         return out
-    # Fallback: re-encode
+    # Попытка 2: без аудио
+    out.unlink(missing_ok=True)
     cmd2 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
-            "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
-    return out if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0 else path
+            "-c:v", "libx264", "-preset", "fast", "-an", str(out)]
+    if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Зеркало (%s, без аудио): %s", direction, out)
+        return out
+    logger.error("❌ Зеркало не удалось")
+    return path
+
+
+def _find_font() -> str:
+    """Ищет любой доступный TTF-шрифт на сервере."""
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+    ]
+    for fp in font_paths:
+        if Path(fp).exists():
+            return fp
+    # Поиск любого ttf
+    import glob
+    found = glob.glob("/usr/share/fonts/**/*.ttf", recursive=True)
+    if found:
+        return found[0]
+    return ""
 
 
 def apply_text_overlay(path: Path, text: str) -> Path:
     """Наложение текста внизу видео (белый текст с тенью)."""
     out = path.with_stem(path.stem + "_text").with_suffix(".mp4")
-    # Экранируем спецсимволы для drawtext
-    safe_text = text.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace(":", "\\:").replace("%", "%%")
-    # Шрифт — используем стандартный, который точно есть
+    
+    # Записываем текст в файл — полностью избегаем проблем с экранированием
+    text_file = Path(f"/tmp/overlay_{id(path)}.txt")
+    text_file.write_text(text, encoding="utf-8")
+    
+    font = _find_font()
+    font_part = f":fontfile='{font}'" if font else ""
+    
     vf = (
-        f"drawtext=text='{safe_text}'"
-        ":fontsize=24:fontcolor=white:borderw=2:bordercolor=black"
-        ":x=(w-text_w)/2:y=h-text_h-20"
+        f"drawtext=textfile='{text_file}'"
+        f"{font_part}"
+        f":fontsize=28:fontcolor=white:borderw=3:bordercolor=black"
+        f":x=(w-text_w)/2:y=h-text_h-30"
     )
-    cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf, "-c:a", "copy", str(out)]
+    
+    # Попытка 1: с шрифтом
+    cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
+           "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
+    logger.warning("Text overlay cmd: %s", " ".join(cmd))
     if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+        text_file.unlink(missing_ok=True)
         logger.info("✅ Текст наложен: %s", out)
         return out
-    # Fallback: с re-encode
+    
+    # Попытка 2: без fontfile
     out.unlink(missing_ok=True)
-    cmd2 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
+    vf2 = (
+        f"drawtext=textfile='{text_file}'"
+        f":fontsize=28:fontcolor=white:borderw=3:bordercolor=black"
+        f":x=(w-text_w)/2:y=h-text_h-30"
+    )
+    cmd2 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf2,
             "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
+    logger.warning("Text overlay cmd2 (no font): %s", " ".join(cmd2))
     if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
+        text_file.unlink(missing_ok=True)
+        logger.info("✅ Текст наложен (без шрифта): %s", out)
         return out
+    
+    # Попытка 3: без аудио
+    out.unlink(missing_ok=True)
+    cmd3 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf2,
+            "-c:v", "libx264", "-preset", "fast", "-an", str(out)]
+    if ffmpeg_run(cmd3) and out.exists() and out.stat().st_size > 0:
+        text_file.unlink(missing_ok=True)
+        logger.info("✅ Текст наложен (без аудио): %s", out)
+        return out
+    
+    text_file.unlink(missing_ok=True)
     logger.warning("⚠️ Наложение текста не удалось")
     return path
 
@@ -1261,37 +1338,57 @@ def apply_music_overlay(video_path: Path, music_path: Path) -> Path:
 def apply_blur_bg(path: Path) -> Path:
     """Размытый фон 16:9 для вертикального видео."""
     out = path.with_stem(path.stem + "_blurbg").with_suffix(".mp4")
-    # Сложный filter_complex:
-    # [0:v] scale to 1920x1080 + blur → фон
-    # [0:v] scale fit to 1080 height → передний план
-    # overlay по центру
+    
+    # filter_complex: два потока из одного входа
+    # 1) Масштабируем + кропаем до 1280x720 + размываем → фон
+    # 2) Масштабируем с сохранением пропорций до высоты 720 → передний план
+    # 3) Оверлей по центру
     fc = (
-        "[0:v]scale=1920:1080:force_original_aspect_ratio=increase,"
-        "crop=1920:1080,boxblur=25:5[bg];"
-        "[0:v]scale=-2:1080:force_original_aspect_ratio=decrease[fg];"
+        "[0:v]scale=1280:720:force_original_aspect_ratio=increase,"
+        "crop=1280:720,boxblur=20:5[bg];"
+        "[0:v]scale=-2:720:force_original_aspect_ratio=decrease[fg];"
         "[bg][fg]overlay=(W-w)/2:(H-h)/2"
     )
     cmd = [
         "ffmpeg", "-y", "-i", str(path),
         "-filter_complex", fc,
         "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-        "-c:a", "copy",
+        "-c:a", "aac",
         str(out),
     ]
+    logger.warning("Blur BG cmd: %s", " ".join(cmd))
     if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
         logger.info("✅ Размытый фон применён: %s", out)
         return out
-    # Fallback: простой pad
+    
+    # Попытка 2: без аудио
     out.unlink(missing_ok=True)
     cmd2 = [
         "ffmpeg", "-y", "-i", str(path),
-        "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
-        "-c:v", "libx264", "-preset", "fast",
-        "-c:a", "copy",
+        "-filter_complex", fc,
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-an",
         str(out),
     ]
+    logger.warning("Blur BG cmd2 (no audio): %s", " ".join(cmd2))
     if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Размытый фон (без аудио): %s", out)
         return out
+    
+    # Попытка 3: простой pad чёрный
+    out.unlink(missing_ok=True)
+    cmd3 = [
+        "ffmpeg", "-y", "-i", str(path),
+        "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black",
+        "-c:v", "libx264", "-preset", "fast",
+        "-c:a", "aac",
+        str(out),
+    ]
+    logger.warning("Blur BG cmd3 (black pad fallback): %s", " ".join(cmd3))
+    if ffmpeg_run(cmd3) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Чёрный фон 16:9 (fallback): %s", out)
+        return out
+    
     logger.warning("⚠️ Размытый фон не удался")
     return path
 
@@ -1300,7 +1397,7 @@ def apply_speed(path: Path, speed: float) -> Path:
     """Ускоряет/замедляет видео. FIX: корректная цепочка atempo."""
     if speed == 1.0:
         return path
-    out = path.with_stem(path.stem + "_speed")
+    out = path.with_stem(path.stem + "_speed").with_suffix(".mp4")
     # atempo поддерживает только 0.5–100.0
     # Для speed=0.5 → setpts=2*PTS, atempo=0.5
     # Для speed=2.0 → setpts=0.5*PTS, atempo=2.0
@@ -3894,7 +3991,7 @@ async def _do_download(user, status_msg, context):
         # Скорость
         if speed != 1.0 and fmt in ("video", "circle"):
             dur = await asyncio.get_event_loop().run_in_executor(None, get_video_duration, current)
-            out_speed = current.with_stem(current.stem + "_speed")
+            out_speed = current.with_stem(current.stem + "_speed").with_suffix(".mp4")
             # FIX: корректная цепочка atempo
             atempo_parts = []
             remaining_speed = speed
