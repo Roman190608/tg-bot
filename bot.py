@@ -1,6 +1,6 @@
 """
-Telegram Video Downloader Bot v1.7
-Refactored: все баги исправлены, код реструктурирован.
+Telegram Video Downloader Bot v1.8
+Видеоредактор: текст, музыка, нарезка, зеркало, размытый фон.
 """
 
 import re
@@ -35,7 +35,7 @@ import yt_dlp
 
 BOT_TOKEN    = os.environ.get("BOT_TOKEN", "TOKEN_HERE")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "balerndownloadsbot")
-BOT_VERSION  = os.environ.get("BOT_VERSION", "1.7")
+BOT_VERSION  = os.environ.get("BOT_VERSION", "1.8")
 ADMIN_ID     = int(os.environ.get("ADMIN_ID", "123456789"))
 DAILY_LIMIT  = 20
 HISTORY_SIZE = 10
@@ -393,11 +393,13 @@ TEXTS = {
             "📌 Как пользоваться\n"
             "━━━━━━━━━━━━━━━━━\n\n"
             "1️⃣ Отправь ссылку на видео\n"
-            "2️⃣ Выбери формат: видео / MP3 / WAV / FLAC / GIF / кружочек / 🗿 шакал\n"
+            "2️⃣ Выбери формат: видео / MP3 / WAV / FLAC / GIF / кружочек / 🗿 шакал / ✂️ нарезка\n"
             "3️⃣ Выбери качество и уровень звука\n"
-            "4️⃣ Ориентация, субтитры, скорость, басс-буст — или «Скачать»\n\n"
-            "🌀 GIF — поддержка скорости!\n"
-            "🔊 Басс-буст — мощный бас на видео\n"
+            "4️⃣ Настрой эффекты:\n"
+            "   • Ориентация, 🌫 размытый фон 16:9\n"
+            "   • ↔️ Зеркало, 📝 текст, 🎶 музыка\n"
+            "   • Субтитры, 🔊 басс-буст, ⚡ скорость\n\n"
+            "✂️ Нарезка — быстрая вырезка без конвертации\n"
             "🗿 Шакал — видео в убитом качестве (мем)\n\n"
             "🎭 Стикерпаки: отправь ссылку t.me/addstickers/...\n"
             "🔍 Поиск YouTube: кнопка в меню\n"
@@ -466,6 +468,21 @@ TEXTS = {
         "orient_original": "📱 Оригинал",
         "orient_square": "⬛ 1:1",
         "orient_landscape": "🖼 16:9",
+        "orient_blur_bg": "🌫 Фон 16:9",
+        "orient_mirror_none": "↔️ Зеркало ❌",
+        "orient_mirror_h": "↔️ Зеркало ✅",
+        "orient_mirror_v": "↕️ Зеркало ✅",
+        "orient_text": "📝 Текст ❌",
+        "orient_text_on": "📝 Текст ✅",
+        "orient_music": "🎶 Музыка ❌",
+        "orient_music_on": "🎶 Музыка ✅",
+        "text_enter": "📝 Введи текст для наложения на видео (появится внизу):\n\nОтправь текст сообщением.",
+        "text_set": "✅ Текст установлен: «{text}»",
+        "text_cleared": "❌ Текст убран.",
+        "music_enter": "🎶 Отправь аудиофайл (MP3, OGG, WAV) для наложения на видео.\n\nМузыка заменит оригинальный звук.",
+        "music_set": "✅ Музыка загружена! 🎶",
+        "music_cleared": "❌ Музыка убрана.",
+        "fmt_cut": "✂️ Нарезка",
         "subs_on": "📝 Субтитры ✅",
         "subs_off": "📝 Субтитры ❌",
         "speed_btn": "⚡ {speed}x",
@@ -546,11 +563,13 @@ TEXTS = {
             "📌 How to use\n"
             "━━━━━━━━━━━━━━━━━\n\n"
             "1️⃣ Send a video link\n"
-            "2️⃣ Choose format: video / MP3 / WAV / FLAC / GIF / circle / 🗿 deep-fried\n"
+            "2️⃣ Choose format: video / MP3 / WAV / FLAC / GIF / circle / 🗿 deep-fried / ✂️ cut\n"
             "3️⃣ Choose quality and audio level\n"
-            "4️⃣ Orientation, subs, speed, bass boost — or Download\n\n"
-            "🌀 GIF — speed control!\n"
-            "🔊 Bass boost — heavy bass on videos\n"
+            "4️⃣ Customize effects:\n"
+            "   • Orientation, 🌫 blur background 16:9\n"
+            "   • ↔️ Mirror, 📝 text, 🎶 music\n"
+            "   • Subs, 🔊 bass boost, ⚡ speed\n\n"
+            "✂️ Cut — fast segment extraction, no conversion\n"
             "🗿 Deep-fried — max compression meme quality\n\n"
             "🎭 Stickerpacks: send t.me/addstickers/... link\n"
             "🔍 YouTube search: button in menu\n"
@@ -619,6 +638,21 @@ TEXTS = {
         "orient_original": "📱 Original",
         "orient_square": "⬛ 1:1",
         "orient_landscape": "🖼 16:9",
+        "orient_blur_bg": "🌫 Blur BG 16:9",
+        "orient_mirror_none": "↔️ Mirror ❌",
+        "orient_mirror_h": "↔️ Mirror ✅",
+        "orient_mirror_v": "↕️ Mirror ✅",
+        "orient_text": "📝 Text ❌",
+        "orient_text_on": "📝 Text ✅",
+        "orient_music": "🎶 Music ❌",
+        "orient_music_on": "🎶 Music ✅",
+        "text_enter": "📝 Type the text to overlay on the video (appears at bottom):\n\nSend it as a message.",
+        "text_set": "✅ Text set: «{text}»",
+        "text_cleared": "❌ Text removed.",
+        "music_enter": "🎶 Send an audio file (MP3, OGG, WAV) to overlay on the video.\n\nMusic will replace the original audio.",
+        "music_set": "✅ Music uploaded! 🎶",
+        "music_cleared": "❌ Music removed.",
+        "fmt_cut": "✂️ Cut",
         "subs_on": "📝 Subs ✅",
         "subs_off": "📝 Subs ❌",
         "speed_btn": "⚡ {speed}x",
@@ -793,6 +827,28 @@ PATCH_NOTES = {
             "🔍 YouTube search right in the bot\n"
             "🎧 SoundCloud — music without borders\n\n"
             "Now supports 11+ platforms! 🔥"
+        ),
+    },
+    "1.8": {
+        "ru": (
+            "🎬 Обновление v1.8 — Видеоредактор\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "📝 Текст на видео — свой текст поверх видео\n"
+            "🎶 Своя музыка — замени звук на любой трек\n"
+            "✂️ Быстрая нарезка — вырезка сегмента без конвертации\n"
+            "↔️ Зеркало — отражение по горизонтали/вертикали\n"
+            "🌫 Размытый фон — вертикальное видео в 16:9\n\n"
+            "Полноценный видеоредактор в Telegram! ✨"
+        ),
+        "en": (
+            "🎬 Update v1.8 — Video Editor\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "📝 Text overlay — add custom text on video\n"
+            "🎶 Custom music — replace audio with your track\n"
+            "✂️ Fast cut — segment extraction without conversion\n"
+            "↔️ Mirror — horizontal/vertical flip\n"
+            "🌫 Blur background — vertical video in 16:9\n\n"
+            "Full video editor in Telegram! ✨"
         ),
     },
     "1.7": {
@@ -1109,6 +1165,8 @@ def apply_audio(path: Path, volume: float) -> Path:
 def apply_orientation(path: Path, orient: str) -> Path:
     if orient == "original":
         return path
+    if orient == "blur_bg":
+        return apply_blur_bg(path)
     out = path.with_stem(path.stem + "_orient")
     if orient == "square":
         # FIX: правильное экранирование запятой для ffmpeg
@@ -1123,6 +1181,119 @@ def apply_trim(path: Path, start: str, end: str) -> Path:
     out = path.with_stem(path.stem + "_trim")
     cmd = ["ffmpeg", "-y", "-i", str(path), "-ss", start, "-to", end, "-c", "copy", str(out)]
     return out if ffmpeg_run(cmd) and out.exists() else path
+
+
+def apply_mirror(path: Path, direction: str) -> Path:
+    """Зеркалирование: horizontal (hflip) или vertical (vflip)."""
+    if direction not in ("horizontal", "vertical"):
+        return path
+    out = path.with_stem(path.stem + "_mirror")
+    vf = "hflip" if direction == "horizontal" else "vflip"
+    cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf, "-c:a", "copy", str(out)]
+    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+        return out
+    # Fallback: re-encode
+    cmd2 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
+            "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
+    return out if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0 else path
+
+
+def apply_text_overlay(path: Path, text: str) -> Path:
+    """Наложение текста внизу видео (белый текст с тенью)."""
+    out = path.with_stem(path.stem + "_text").with_suffix(".mp4")
+    # Экранируем спецсимволы для drawtext
+    safe_text = text.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace(":", "\\:").replace("%", "%%")
+    # Шрифт — используем стандартный, который точно есть
+    vf = (
+        f"drawtext=text='{safe_text}'"
+        ":fontsize=24:fontcolor=white:borderw=2:bordercolor=black"
+        ":x=(w-text_w)/2:y=h-text_h-20"
+    )
+    cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf, "-c:a", "copy", str(out)]
+    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Текст наложен: %s", out)
+        return out
+    # Fallback: с re-encode
+    out.unlink(missing_ok=True)
+    cmd2 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
+            "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
+    if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
+        return out
+    logger.warning("⚠️ Наложение текста не удалось")
+    return path
+
+
+def apply_music_overlay(video_path: Path, music_path: Path) -> Path:
+    """Замена аудио в видео на пользовательскую музыку."""
+    out = video_path.with_stem(video_path.stem + "_music").with_suffix(".mp4")
+    # Берём длительность видео, обрезаем музыку по ней
+    dur = get_video_duration(video_path)
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(video_path),
+        "-i", str(music_path),
+        "-map", "0:v:0", "-map", "1:a:0",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+        "-shortest",
+        str(out),
+    ]
+    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Музыка наложена: %s", out)
+        return out
+    # Fallback: re-encode video too
+    out.unlink(missing_ok=True)
+    cmd2 = [
+        "ffmpeg", "-y",
+        "-i", str(video_path),
+        "-i", str(music_path),
+        "-map", "0:v:0", "-map", "1:a:0",
+        "-c:v", "libx264", "-preset", "fast",
+        "-c:a", "aac", "-b:a", "192k",
+        "-shortest",
+        str(out),
+    ]
+    if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
+        return out
+    logger.warning("⚠️ Наложение музыки не удалось")
+    return video_path
+
+
+def apply_blur_bg(path: Path) -> Path:
+    """Размытый фон 16:9 для вертикального видео."""
+    out = path.with_stem(path.stem + "_blurbg").with_suffix(".mp4")
+    # Сложный filter_complex:
+    # [0:v] scale to 1920x1080 + blur → фон
+    # [0:v] scale fit to 1080 height → передний план
+    # overlay по центру
+    fc = (
+        "[0:v]scale=1920:1080:force_original_aspect_ratio=increase,"
+        "crop=1920:1080,boxblur=25:5[bg];"
+        "[0:v]scale=-2:1080:force_original_aspect_ratio=decrease[fg];"
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2"
+    )
+    cmd = [
+        "ffmpeg", "-y", "-i", str(path),
+        "-filter_complex", fc,
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-c:a", "copy",
+        str(out),
+    ]
+    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+        logger.info("✅ Размытый фон применён: %s", out)
+        return out
+    # Fallback: простой pad
+    out.unlink(missing_ok=True)
+    cmd2 = [
+        "ffmpeg", "-y", "-i", str(path),
+        "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
+        "-c:v", "libx264", "-preset", "fast",
+        "-c:a", "copy",
+        str(out),
+    ]
+    if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
+        return out
+    logger.warning("⚠️ Размытый фон не удался")
+    return path
 
 
 def apply_speed(path: Path, speed: float) -> Path:
@@ -1371,7 +1542,7 @@ def format_keyboard(lang="ru", default_fmt="", url="") -> InlineKeyboardMarkup:
         [btn("fmt_gif", "fmt_gif"), btn("fmt_circle", "fmt_circle")],
         [btn("fmt_thumb", "fmt_thumb"), btn("fmt_playlist", "fmt_playlist")],
         [btn("fmt_wav", "fmt_wav"), btn("fmt_flac", "fmt_flac")],
-        [btn("fmt_shakal", "fmt_shakal")],
+        [btn("fmt_shakal", "fmt_shakal"), btn("fmt_cut", "fmt_cut")],
     ]
     if url and re.search(STICKER_PATTERN, url, re.IGNORECASE):
         rows.append([btn("fmt_sticker", "fmt_sticker")])
@@ -1412,18 +1583,44 @@ def speed_keyboard(lang="ru") -> InlineKeyboardMarkup:
     ])
 
 
-def orientation_keyboard(subs_on=False, speed="1.0", bass=False, lang="ru") -> InlineKeyboardMarkup:
+def orientation_keyboard(subs_on=False, speed="1.0", bass=False, mirror="none",
+                         has_text=False, has_music=False, lang="ru") -> InlineKeyboardMarkup:
     T = TEXTS.get(lang, TEXTS["ru"])
+    # Mirror label
+    if mirror == "horizontal":
+        mirror_label = T["orient_mirror_h"]
+    elif mirror == "vertical":
+        mirror_label = T["orient_mirror_v"]
+    else:
+        mirror_label = T["orient_mirror_none"]
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(T["orient_original"], callback_data="orient_original"),
          InlineKeyboardButton(T["orient_square"], callback_data="orient_square")],
-        [InlineKeyboardButton(T["orient_landscape"], callback_data="orient_landscape")],
+        [InlineKeyboardButton(T["orient_landscape"], callback_data="orient_landscape"),
+         InlineKeyboardButton(T["orient_blur_bg"], callback_data="orient_blur_bg")],
+        [InlineKeyboardButton(mirror_label, callback_data="orient_mirror"),
+         InlineKeyboardButton(T["orient_text_on"] if has_text else T["orient_text"], callback_data="orient_text")],
         [InlineKeyboardButton(T["subs_on"] if subs_on else T["subs_off"], callback_data="orient_toggle_subs"),
          InlineKeyboardButton(T["bass_on"] if bass else T["bass_off"], callback_data="orient_bass")],
-        [InlineKeyboardButton(T["speed_btn"].format(speed=speed), callback_data="orient_speed"),
-         InlineKeyboardButton(T["trim_btn"], callback_data="orient_trim")],
-        [InlineKeyboardButton(T["download_btn"], callback_data="orient_download")],
+        [InlineKeyboardButton(T["orient_music_on"] if has_music else T["orient_music"], callback_data="orient_music"),
+         InlineKeyboardButton(T["speed_btn"].format(speed=speed), callback_data="orient_speed")],
+        [InlineKeyboardButton(T["trim_btn"], callback_data="orient_trim"),
+         InlineKeyboardButton(T["download_btn"], callback_data="orient_download")],
     ])
+
+
+def _orient_kb(context):
+    """Хелпер: строит orientation_keyboard из context.user_data."""
+    lang = get_lang(context)
+    return orientation_keyboard(
+        subs_on=context.user_data.get("subtitles", False),
+        speed=context.user_data.get("speed", "1.0"),
+        bass=context.user_data.get("bass_boost", False),
+        mirror=context.user_data.get("mirror", "none"),
+        has_text=bool(context.user_data.get("overlay_text")),
+        has_music=bool(context.user_data.get("overlay_music")),
+        lang=lang,
+    )
 
 
 def gif_menu_keyboard(speed="1.0", lang="ru") -> InlineKeyboardMarkup:
@@ -1528,7 +1725,7 @@ def patchnote_keyboard(version: str) -> InlineKeyboardMarkup:
 def settings_keyboard(theme, fmt, quality, lang="ru") -> InlineKeyboardMarkup:
     T = TEXTS.get(lang, TEXTS["ru"])
     theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
-    fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿"}
+    fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿", "cut": "✂️"}
     q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(T["theme_toggle"].format(theme=theme_label), callback_data="settings_theme")],
@@ -1983,7 +2180,7 @@ async def download_video(
 
     # Instagram — сначала пробуем прямой метод (без yt-dlp)
     is_instagram = any(p in url_lower for p in ["instagram.com", "instagr.am"])
-    if is_instagram and fmt in ("video", "gif", "circle", "shakal"):
+    if is_instagram and fmt in ("video", "gif", "circle", "shakal", "cut"):
         logger.warning("IG: пробуем прямой загрузчик для %s", url)
         ig_result = await _instagram_direct_download(url, output_path, fmt)
         if ig_result:
@@ -2004,7 +2201,7 @@ async def download_video(
         "instagram.com", "instagr.am",
     ])
     is_pinterest = any(p in str(url).lower() for p in ["pinterest.com", "pin.it"])
-    if is_simple_platform and fmt not in ("audio", "wav", "flac", "shakal"):
+    if is_simple_platform and fmt not in ("audio", "wav", "flac", "shakal", "cut"):
         format_str = "best"
 
     last_update = {"pct": -1}
@@ -2352,7 +2549,7 @@ async def _notify_admin(user, platform, fmt, context):
     try:
         fmt_labels = {"video": "🎬", "audio": "🎵", "gif": "🌀",
                       "circle": "⭕", "thumb": "🖼", "playlist": "📋",
-                      "wav": "🎵 WAV", "flac": "🎵 FLAC", "shakal": "🗿"}
+                      "wav": "🎵 WAV", "flac": "🎵 FLAC", "shakal": "🗿", "cut": "✂️"}
         name = user.full_name or "?"
         username = f"@{user.username}" if user.username else ""
         await context.bot.send_message(
@@ -2369,6 +2566,10 @@ async def _notify_admin(user, platform, fmt, context):
 
 def init_download_context(context, url: str, platform: str):
     """Сбрасывает контекст скачивания."""
+    # Очищаем старую музыку
+    old_music = context.user_data.get("overlay_music")
+    if old_music:
+        Path(old_music).unlink(missing_ok=True)
     context.user_data.update({
         "pending_url": url,
         "platform": platform,
@@ -2378,7 +2579,12 @@ def init_download_context(context, url: str, platform: str):
         "subtitles": False,
         "bass_boost": False,
         "waiting_trim": False,
+        "waiting_text_overlay": False,
+        "waiting_music": False,
         "speed": "1.0",
+        "mirror": "none",
+        "overlay_text": "",
+        "overlay_music": "",
     })
 
 
@@ -2562,6 +2768,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status.edit_text(t(context, "search_results"), reply_markup=InlineKeyboardMarkup(rows))
         return
 
+    # Ввод текста для наложения
+    if context.user_data.get("waiting_text_overlay"):
+        context.user_data["waiting_text_overlay"] = False
+        context.user_data["overlay_text"] = text[:200]  # Лимит 200 символов
+        await update.message.reply_text(
+            t(context, "text_set", text=text[:200]) + "\n\n" + t(context, "step_orient"),
+            reply_markup=_orient_kb(context),
+        )
+        return
+
     # Режим объединения
     if context.user_data.get("waiting_merge"):
         msg = "📎 Отправь видео как файл." if lang == "ru" else "📎 Send video as a file."
@@ -2613,12 +2829,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     t(context, "shakal_menu"),
                     reply_markup=shakal_menu_keyboard(speed, bass, lang),
                 )
+            elif fmt == "cut":
+                # Нарезка — сразу качаем
+                status_msg = await update.message.reply_text(
+                    f"{t(context, 'downloading')}\n{make_progress_bar(0)}",
+                    reply_markup=cancel_keyboard(lang),
+                )
+                await _run_download(user, status_msg, context)
             else:
-                subs_on = context.user_data.get("subtitles", False)
-                speed = context.user_data.get("speed", "1.0")
                 await update.message.reply_text(
                     t(context, "step_orient"),
-                    reply_markup=orientation_keyboard(subs_on, speed, context.user_data.get("bass_boost", False), lang),
+                    reply_markup=_orient_kb(context),
                 )
         return
 
@@ -2745,7 +2966,7 @@ async def cb_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         def_q = context.user_data.get("default_quality", "best")
         T = TEXTS.get(lang, TEXTS["ru"])
         theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
-        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿"}
+        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿", "cut": "✂️"}
         q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
         await safe_edit(query,
                         T["settings_info"].format(theme=theme_label, fmt=fmt_labels.get(def_fmt, def_fmt), quality=q_labels.get(def_q, def_q)),
@@ -2916,6 +3137,15 @@ async def cb_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.update({"quality": "360", "audio": "normal", "orientation": "original"})
         await safe_edit(query, f"🗿 {platform} • Шакал\n\n{t(context, 'step_trim')}", reply_markup=trim_keyboard(lang))
 
+    elif fmt == "cut":
+        # Быстрая нарезка — только обрезка, без конвертации
+        context.user_data.update({"quality": "best", "audio": "normal", "orientation": "original"})
+        context.user_data["waiting_trim"] = True
+        context.user_data["trim_start"] = None
+        context.user_data["trim_end"] = None
+        msg = "✂️ Быстрая нарезка (без конвертации)\n\n" if lang == "ru" else "✂️ Fast cut (no conversion)\n\n"
+        await safe_edit(query, msg + t(context, "trim_enter_start"))
+
     elif fmt == "thumb":
         await safe_edit(query, "⏳ Скачиваю обложку...", reply_markup=cancel_keyboard(lang))
         await _run_download(query.from_user, query.message, context)
@@ -2971,7 +3201,7 @@ async def cb_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subs_on = context.user_data.get("subtitles", False)
     speed = context.user_data.get("speed", "1.0")
     await safe_edit(query, t(context, "step_orient"),
-                    reply_markup=orientation_keyboard(subs_on, speed, context.user_data.get("bass_boost", False), lang))
+                    reply_markup=_orient_kb(context))
 
 
 async def cb_speed(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3000,7 +3230,7 @@ async def cb_speed(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     subs_on = context.user_data.get("subtitles", False)
     await safe_edit(query, t(context, "step_orient"),
-                    reply_markup=orientation_keyboard(subs_on, speed, context.user_data.get("bass_boost", False), lang))
+                    reply_markup=_orient_kb(context))
 
 
 async def cb_orientation(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3013,14 +3243,39 @@ async def cb_orientation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "orient_toggle_subs":
         context.user_data["subtitles"] = not subs_on
-        bass = context.user_data.get("bass_boost", False)
         await safe_edit(query, t(context, "step_orient"),
-                        reply_markup=orientation_keyboard(not subs_on, speed, bass, lang))
+                        reply_markup=_orient_kb(context))
     elif data == "orient_bass":
         context.user_data["bass_boost"] = not context.user_data.get("bass_boost", False)
-        bass = context.user_data["bass_boost"]
         await safe_edit(query, t(context, "step_orient"),
-                        reply_markup=orientation_keyboard(subs_on, speed, bass, lang))
+                        reply_markup=_orient_kb(context))
+    elif data == "orient_mirror":
+        # Цикл: none → horizontal → vertical → none
+        cur = context.user_data.get("mirror", "none")
+        nxt = {"none": "horizontal", "horizontal": "vertical", "vertical": "none"}
+        context.user_data["mirror"] = nxt.get(cur, "none")
+        await safe_edit(query, t(context, "step_orient"),
+                        reply_markup=_orient_kb(context))
+    elif data == "orient_text":
+        if context.user_data.get("overlay_text"):
+            # Убираем текст
+            context.user_data["overlay_text"] = ""
+            await safe_edit(query, t(context, "text_cleared") + "\n\n" + t(context, "step_orient"),
+                            reply_markup=_orient_kb(context))
+        else:
+            context.user_data["waiting_text_overlay"] = True
+            await safe_edit(query, t(context, "text_enter"))
+    elif data == "orient_music":
+        if context.user_data.get("overlay_music"):
+            # Убираем музыку
+            music_path = context.user_data.pop("overlay_music", None)
+            if music_path:
+                Path(music_path).unlink(missing_ok=True)
+            await safe_edit(query, t(context, "music_cleared") + "\n\n" + t(context, "step_orient"),
+                            reply_markup=_orient_kb(context))
+        else:
+            context.user_data["waiting_music"] = True
+            await safe_edit(query, t(context, "music_enter"))
     elif data == "orient_speed":
         await safe_edit(query, t(context, "step_speed"), reply_markup=speed_keyboard(lang))
     elif data == "orient_trim":
@@ -3035,7 +3290,7 @@ async def cb_orientation(update: Update, context: ContextTypes.DEFAULT_TYPE):
         orient = data.replace("orient_", "")
         context.user_data["orientation"] = orient
         await safe_edit(query, t(context, "step_orient"),
-                        reply_markup=orientation_keyboard(subs_on, speed, context.user_data.get("bass_boost", False), lang))
+                        reply_markup=_orient_kb(context))
 
 
 async def cb_circle(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3260,7 +3515,7 @@ async def cb_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         theme_label = T["theme_dark"] if new == "dark" else T["theme_light"]
         def_fmt = context.user_data.get("default_format", "video")
         def_q = context.user_data.get("default_quality", "best")
-        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿"}
+        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿", "cut": "✂️"}
         q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
         text = T["settings_info"].format(theme=theme_label, fmt=fmt_labels.get(def_fmt, def_fmt), quality=q_labels.get(def_q, def_q))
         try:
@@ -3294,7 +3549,7 @@ async def cb_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         theme = context.user_data.get("theme", "light")
         def_q = context.user_data.get("default_quality", "best")
         theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
-        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿"}
+        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿", "cut": "✂️"}
         q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
         await safe_edit(query,
                         T["settings_info"].format(theme=theme_label, fmt=fmt_labels.get(fmt, fmt), quality=q_labels.get(def_q, def_q)),
@@ -3311,7 +3566,7 @@ async def cb_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         theme = context.user_data.get("theme", "light")
         def_fmt = context.user_data.get("default_format", "video")
         theme_label = T["theme_dark"] if theme == "dark" else T["theme_light"]
-        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿"}
+        fmt_labels = {"video": "🎬", "audio": "🎵 MP3", "gif": "🌀 GIF", "circle": "⭕", "shakal": "🗿", "cut": "✂️"}
         q_labels = {"360": "360p", "480": "480p", "720": "720p", "1080": "1080p", "best": "Max"}
         await safe_edit(query,
                         T["settings_info"].format(theme=theme_label, fmt=fmt_labels.get(def_fmt, def_fmt), quality=q_labels.get(quality, quality)),
@@ -3436,6 +3691,9 @@ async def _do_download(user, status_msg, context):
     speed_str = context.user_data.get("speed", "1.0")
     cancel_flag = context.user_data.get("cancel_flag", {"cancelled": False})
     audio_codec = context.user_data.get("audio_format", "mp3")
+    mirror    = context.user_data.get("mirror", "none")
+    overlay_text = context.user_data.get("overlay_text", "")
+    overlay_music = context.user_data.get("overlay_music", "")
     volume, _ = AUDIO_OPTIONS.get(audio, (1.0, "🔊"))
     speed = float(speed_str)
     ql = QUALITY_LABELS.get(quality, quality)
@@ -3514,6 +3772,25 @@ async def _do_download(user, status_msg, context):
             current = await asyncio.get_event_loop().run_in_executor(None, apply_trim, current, trim_s, trim_e)
             if current != file_path:
                 files_to_clean.append(current)
+
+        # Быстрая нарезка — пропускаем все эффекты
+        if fmt == "cut":
+            await status_msg.edit_text("📤 Отправляю...")
+            caption = f"✂️ {platform}"
+            if trim_s and trim_e:
+                caption += f" • {trim_s}–{trim_e}"
+            again_label = "🔄 Ещё раз" if lang == "ru" else "🔄 Again"
+            again_kb = InlineKeyboardMarkup([[InlineKeyboardButton(again_label, callback_data="download_again")]])
+            with open(current, "rb") as f:
+                await status_msg.reply_video(video=f, caption=caption, reply_markup=again_kb)
+            await status_msg.delete()
+            update_stats(user.id, platform)
+            increment_limit(user.id)
+            add_to_history(context, url, platform)
+            await _notify_admin(user, platform, fmt, context)
+            for fp in files_to_clean:
+                fp.unlink(missing_ok=True)
+            return
 
         # GIF
         if fmt == "gif":
@@ -3657,6 +3934,32 @@ async def _do_download(user, status_msg, context):
                 files_to_clean.append(new)
                 current = new
 
+        # Зеркало
+        if mirror != "none" and fmt == "video" and ffmpeg_ok():
+            await status_msg.edit_text("↔️ Зеркало..." if mirror == "horizontal" else "↕️ Зеркало...")
+            new = await asyncio.get_event_loop().run_in_executor(None, apply_mirror, current, mirror)
+            if new != current:
+                files_to_clean.append(new)
+                current = new
+
+        # Текст поверх видео
+        if overlay_text and fmt == "video" and ffmpeg_ok():
+            await status_msg.edit_text("📝 Текст...")
+            new = await asyncio.get_event_loop().run_in_executor(None, apply_text_overlay, current, overlay_text)
+            if new != current:
+                files_to_clean.append(new)
+                current = new
+
+        # Наложение музыки
+        if overlay_music and fmt == "video" and ffmpeg_ok():
+            music_p = Path(overlay_music)
+            if music_p.exists():
+                await status_msg.edit_text("🎶 Музыка...")
+                new = await asyncio.get_event_loop().run_in_executor(None, apply_music_overlay, current, music_p)
+                if new != current:
+                    files_to_clean.append(new)
+                    current = new
+
         # Проверка размера
         file_size = current.stat().st_size
         if file_size > MAX_FILE_MB * 1024 * 1024:
@@ -3694,6 +3997,12 @@ async def _do_download(user, status_msg, context):
             caption += f" • {speed}x"
         if bass_boost:
             caption += " • 🔊 Bass"
+        if mirror != "none":
+            caption += " • ↔️" if mirror == "horizontal" else " • ↕️"
+        if overlay_text:
+            caption += " • 📝"
+        if overlay_music:
+            caption += " • 🎶"
         if subs_warning:
             caption += f"\n{subs_warning}"
 
@@ -3733,6 +4042,46 @@ async def _do_download(user, status_msg, context):
                 f.unlink(missing_ok=True)
             except Exception:
                 pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ОБРАБОТЧИК АУДИО-ФАЙЛОВ (наложение музыки)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def handle_audio_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка загруженных аудио-файлов (для наложения музыки)."""
+    lang = get_lang(context)
+    if not context.user_data.get("waiting_music"):
+        return  # Не ждём музыку — пропускаем
+    context.user_data["waiting_music"] = False
+    audio = update.message.audio or update.message.voice or update.message.document
+    if not audio:
+        await update.message.reply_text("❌ Не распознал аудиофайл.")
+        return
+    size_mb = (audio.file_size or 0) / 1024 / 1024
+    if size_mb > 20:
+        await update.message.reply_text(f"❌ {size_mb:.0f} МБ — макс. 20 МБ.")
+        return
+    try:
+        file = await context.bot.get_file(audio.file_id)
+        ext = ".mp3"
+        if hasattr(audio, "mime_type") and audio.mime_type:
+            if "ogg" in audio.mime_type:
+                ext = ".ogg"
+            elif "wav" in audio.mime_type:
+                ext = ".wav"
+            elif "m4a" in audio.mime_type:
+                ext = ".m4a"
+        music_path = DOWNLOAD_DIR / f"music_{update.effective_user.id}{ext}"
+        await file.download_to_drive(str(music_path))
+        context.user_data["overlay_music"] = str(music_path)
+        await update.message.reply_text(
+            t(context, "music_set") + "\n\n" + t(context, "step_orient"),
+            reply_markup=_orient_kb(context),
+        )
+    except Exception as e:
+        logger.error("Music upload error: %s", e)
+        await update.message.reply_text("❌ Ошибка загрузки аудио.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3891,6 +4240,18 @@ def main():
         | filters.Document.MimeType("video/x-matroska")
         | filters.Document.MimeType("video/webm"),
         handle_video_file,
+    ))
+    # Аудио файлы (наложение музыки)
+    app.add_handler(MessageHandler(
+        filters.AUDIO | filters.VOICE
+        | filters.Document.MimeType("audio/mpeg")
+        | filters.Document.MimeType("audio/mp3")
+        | filters.Document.MimeType("audio/ogg")
+        | filters.Document.MimeType("audio/wav")
+        | filters.Document.MimeType("audio/x-wav")
+        | filters.Document.MimeType("audio/mp4")
+        | filters.Document.MimeType("audio/x-m4a"),
+        handle_audio_file,
     ))
     # Текст
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
