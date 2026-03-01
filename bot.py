@@ -198,6 +198,53 @@ def _test_ffmpeg():
 
 _test_ffmpeg()
 
+
+def _test_filters():
+    """Проверяет доступные фильтры ffmpeg при запуске."""
+    ff = _ffmpeg_cmd()
+    logger.warning("🔍 Тест фильтров ffmpeg (%s):", ff)
+    test_in = Path("/tmp/_fftest_in.mp4")
+    test_out = Path("/tmp/_fftest_out.mp4")
+    try:
+        gen = subprocess.run(
+            [ff, "-y", "-f", "lavfi", "-i", "color=black:s=320x240:d=1",
+             "-c:v", "libx264", "-preset", "ultrafast", str(test_in)],
+            capture_output=True, timeout=10
+        )
+        if gen.returncode != 0 or not test_in.exists():
+            logger.error("  ❌ Не удалось создать тестовое видео")
+            return
+
+        filters = {
+            "hflip": ["-vf", "hflip"],
+            "vflip": ["-vf", "vflip"],
+            "drawtext": ["-vf", "drawtext=text=test:fontsize=20:fontcolor=white"],
+            "boxblur": ["-vf", "boxblur=5:1"],
+            "scale+pad": ["-vf", "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2"],
+            "filter_complex": ["-filter_complex", "[0:v]scale=320:240,boxblur=5:1[bg];[0:v]scale=-2:200[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2"],
+        }
+        for name, vf_args in filters.items():
+            test_out.unlink(missing_ok=True)
+            cmd = [ff, "-y", "-i", str(test_in)] + vf_args + [
+                "-c:v", "libx264", "-preset", "ultrafast", "-an", str(test_out)]
+            r = subprocess.run(cmd, capture_output=True, timeout=10)
+            if r.returncode == 0 and test_out.exists() and test_out.stat().st_size > 0:
+                logger.warning("  ✅ %s — OK", name)
+            else:
+                err = r.stderr.decode(errors="replace").strip().split("\n")[-3:]
+                logger.error("  ❌ %s — FAIL: %s", name, " | ".join(err))
+    except Exception as e:
+        logger.error("  ❌ Тест фильтров: %s", e)
+    finally:
+        test_in.unlink(missing_ok=True)
+        test_out.unlink(missing_ok=True)
+
+try:
+    _test_filters()
+except Exception as e:
+    logger.error("Filter test crashed: %s", e)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ХРАНИЛИЩЕ (Redis + JSON fallback)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1083,18 +1130,17 @@ def ffmpeg_run(cmd: list) -> bool:
     # Подставляем полный путь к ffmpeg
     if cmd and cmd[0] == "ffmpeg":
         cmd = [_ffmpeg_cmd()] + cmd[1:]
-    result = subprocess.run(cmd, capture_output=True, timeout=300)
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=300)
+    except Exception as e:
+        logger.error("ffmpeg exception: %s", e)
+        return False
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace")
-        # Пропускаем баннер ffmpeg, показываем только ошибку
-        lines = stderr.strip().split("\n")
-        error_lines = [l for l in lines if not l.startswith("  ") and "Copyright" not in l
-                       and "configuration:" not in l and "built with" not in l
-                       and "ffmpeg version" not in l and "libav" not in l
-                       and "lib" not in l.strip()[:3]]
-        error_msg = "\n".join(error_lines[-15:]) if error_lines else stderr[-500:]
-        logger.error("ffmpeg error:\n%s", error_msg)
-        logger.error("ffmpeg cmd: %s", " ".join(str(c) for c in cmd))
+        # Последние 25 строк — там всегда будет реальная ошибка
+        tail = "\n".join(stderr.strip().split("\n")[-25:])
+        logger.error("ffmpeg FAILED (rc=%d):\n%s", result.returncode, tail)
+        logger.error("ffmpeg cmd was: %s", " ".join(str(c) for c in cmd))
     return result.returncode == 0
 
 
@@ -1248,33 +1294,42 @@ def apply_text_overlay(path: Path, text: str) -> Path:
     """Наложение текста внизу видео (белый текст с тенью)."""
     out = path.with_stem(path.stem + "_text").with_suffix(".mp4")
     
-    # Записываем текст в файл — полностью избегаем проблем с экранированием
+    # Записываем текст в файл — избегаем проблем с экранированием
     text_file = Path(f"/tmp/overlay_{id(path)}.txt")
     text_file.write_text(text, encoding="utf-8")
+    logger.warning("Text overlay: file=%s, exists=%s, text='%s'", text_file, text_file.exists(), text[:50])
     
     font = _find_font()
-    font_part = f":fontfile='{font}'" if font else ""
+    logger.warning("Text overlay: font=%s", font)
+    
+    # ВАЖНО: НЕ оборачиваем пути в кавычки!
+    # subprocess передаёт аргументы напрямую, кавычки стали бы частью имени файла
+    # Экранируем : в путях для ffmpeg filter syntax (: = разделитель опций)
+    tf_escaped = str(text_file).replace(":", "\\:")
+    font_escaped = font.replace(":", "\\:") if font else ""
+    
+    font_part = f":fontfile={font_escaped}" if font_escaped else ""
     
     vf = (
-        f"drawtext=textfile='{text_file}'"
+        f"drawtext=textfile={tf_escaped}"
         f"{font_part}"
         f":fontsize=28:fontcolor=white:borderw=3:bordercolor=black"
         f":x=(w-text_w)/2:y=h-text_h-30"
     )
     
-    # Попытка 1: с шрифтом
+    # Попытка 1: полная
     cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
            "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
-    logger.warning("Text overlay cmd: %s", " ".join(cmd))
+    logger.warning("Text overlay cmd1: %s", " ".join(cmd))
     if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
         text_file.unlink(missing_ok=True)
-        logger.info("✅ Текст наложен: %s", out)
+        logger.info("✅ Текст наложен")
         return out
     
     # Попытка 2: без fontfile
     out.unlink(missing_ok=True)
     vf2 = (
-        f"drawtext=textfile='{text_file}'"
+        f"drawtext=textfile={tf_escaped}"
         f":fontsize=28:fontcolor=white:borderw=3:bordercolor=black"
         f":x=(w-text_w)/2:y=h-text_h-30"
     )
@@ -1283,20 +1338,38 @@ def apply_text_overlay(path: Path, text: str) -> Path:
     logger.warning("Text overlay cmd2 (no font): %s", " ".join(cmd2))
     if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
         text_file.unlink(missing_ok=True)
-        logger.info("✅ Текст наложен (без шрифта): %s", out)
+        logger.info("✅ Текст наложен (без шрифта)")
         return out
     
-    # Попытка 3: без аудио
+    # Попытка 3: без аудио + без шрифта
     out.unlink(missing_ok=True)
     cmd3 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf2,
             "-c:v", "libx264", "-preset", "fast", "-an", str(out)]
+    logger.warning("Text overlay cmd3 (no font, no audio): %s", " ".join(cmd3))
     if ffmpeg_run(cmd3) and out.exists() and out.stat().st_size > 0:
         text_file.unlink(missing_ok=True)
-        logger.info("✅ Текст наложен (без аудио): %s", out)
+        logger.info("✅ Текст наложен (без аудио)")
+        return out
+    
+    # Попытка 4: drawtext через text= напрямую (простой текст, без файла)
+    out.unlink(missing_ok=True)
+    # Минимальное экранирование для drawtext text=
+    simple_text = text.replace("\\", "\\\\").replace("'", "").replace(":", "\\:").replace(";", "")[:100]
+    vf4 = (
+        f"drawtext=text={simple_text}"
+        f":fontsize=28:fontcolor=white:borderw=3:bordercolor=black"
+        f":x=(w-text_w)/2:y=h-text_h-30"
+    )
+    cmd4 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf4,
+            "-c:v", "libx264", "-preset", "fast", "-an", str(out)]
+    logger.warning("Text overlay cmd4 (direct text, no audio): %s", " ".join(cmd4))
+    if ffmpeg_run(cmd4) and out.exists() and out.stat().st_size > 0:
+        text_file.unlink(missing_ok=True)
+        logger.info("✅ Текст наложен (direct text)")
         return out
     
     text_file.unlink(missing_ok=True)
-    logger.warning("⚠️ Наложение текста не удалось")
+    logger.error("❌ Наложение текста: все 4 попытки не удались")
     return path
 
 
@@ -3974,7 +4047,10 @@ async def _do_download(user, status_msg, context):
                 logger.error("Шакал: ffmpeg не найден!")
 
         # Ориентация
+        logger.warning("Pipeline: orient=%s, mirror=%s, text=%s, music=%s, fmt=%s",
+                       orient, mirror, bool(overlay_text), bool(overlay_music), fmt)
         if fmt == "video" and orient != "original":
+            await status_msg.edit_text(f"📐 {orient}...")
             current = await asyncio.get_event_loop().run_in_executor(None, apply_orientation, current, orient)
             if current not in files_to_clean:
                 files_to_clean.append(current)
