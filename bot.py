@@ -1132,7 +1132,7 @@ def ffmpeg_run(cmd: list) -> bool:
     if cmd and cmd[0] == "ffmpeg":
         cmd = [_ffmpeg_cmd()] + cmd[1:]
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=300)
+        result = subprocess.run(cmd, capture_output=True, timeout=600)
     except Exception as e:
         logger.error("ffmpeg exception: %s", e)
         return False
@@ -1228,14 +1228,16 @@ def apply_orientation(path: Path, orient: str) -> Path:
         vf = "crop=min(iw\\,ih):min(iw\\,ih),scale=720:720"
     else:
         vf = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2"
+    # OOM-safe: threads=2, ultrafast
     cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
-           "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
+           "-threads", "2", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+           "-c:a", "aac", str(out)]
     if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
         return out
-    # Fallback без аудио
     out.unlink(missing_ok=True)
     cmd2 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
-            "-c:v", "libx264", "-preset", "fast", "-an", str(out)]
+            "-threads", "2", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+            "-an", str(out)]
     return out if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0 else path
 
 
@@ -1246,19 +1248,27 @@ def apply_trim(path: Path, start: str, end: str) -> Path:
 
 
 def apply_mirror(path: Path, direction: str) -> Path:
-    """Зеркалирование видео. Пробуем несколько подходов к кодекам."""
+    """Зеркалирование видео. OOM-safe: ограничиваем threads и memory."""
     if direction not in ("horizontal", "vertical"):
         return path
     out = path.with_stem(path.stem + "_mirror").with_suffix(".mp4")
     vf = "hflip" if direction == "horizontal" else "vflip"
 
-    # Серия попыток с разными кодеками
+    # Проверяем размер — если >720p, уменьшаем чтобы не словить OOM
+    w, h = _get_video_dimensions(path)
+    if max(w, h) > 1280:
+        # Масштабируем до 720p + flip в одном фильтре
+        vf = f"scale=-2:720,{vf}" if h > w else f"scale=720:-2,{vf}"
+
+    # OOM-safe параметры: threads=2, ultrafast (минимум RAM)
+    _lo = ["-threads", "2", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28"]
+
     attempts = [
-        ["-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac"],
-        ["-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "copy"],
-        ["-vf", vf, "-c:v", "libx264", "-preset", "fast", "-an"],
-        ["-vf", vf],  # ffmpeg выбирает кодеки сам
-        ["-vf", vf, "-an"],  # без аудио, кодек авто
+        ["-vf", vf] + _lo + ["-c:a", "aac"],
+        ["-vf", vf] + _lo + ["-c:a", "copy"],
+        ["-vf", vf] + _lo + ["-an"],
+        ["-vf", vf, "-threads", "2"],
+        ["-vf", vf, "-threads", "2", "-an"],
     ]
     for i, extra in enumerate(attempts, 1):
         out.unlink(missing_ok=True)
@@ -1359,13 +1369,13 @@ def apply_text_overlay(path: Path, text: str) -> Path:
         overlay_png.unlink(missing_ok=True)
         return path
 
+    # OOM-safe: threads=2, ultrafast
+    _lo = ["-threads", "2", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28"]
     attempts = [
-        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1",
-         "-c:v", "libx264", "-preset", "fast", "-c:a", "aac"],
-        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1",
-         "-c:v", "libx264", "-preset", "fast", "-c:a", "copy"],
-        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1"],
-        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1", "-an"],
+        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1"] + _lo + ["-c:a", "aac"],
+        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1"] + _lo + ["-c:a", "copy"],
+        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1", "-threads", "2"],
+        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1", "-threads", "2", "-an"],
     ]
     for i, extra in enumerate(attempts, 1):
         out.unlink(missing_ok=True)
@@ -1386,7 +1396,7 @@ def apply_music_overlay(video_path: Path, music_path: Path) -> Path:
     out = video_path.with_stem(video_path.stem + "_music").with_suffix(".mp4")
     attempts = [
         ["-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest"],
-        ["-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", "-b:a", "192k", "-shortest"],
+        ["-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-c:a", "aac", "-b:a", "192k", "-shortest"],
         ["-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "copy", "-shortest"],
         ["-map", "0:v:0", "-map", "1:a:0", "-shortest"],
     ]
@@ -1402,26 +1412,30 @@ def apply_music_overlay(video_path: Path, music_path: Path) -> Path:
 
 
 def apply_blur_bg(path: Path) -> Path:
-    """Размытый фон 16:9. Blur через scale-down+up (без boxblur).
-    Работает в ЛЮБОЙ сборке ffmpeg.
+    """Размытый фон 16:9. OOM-safe: scale-down + threads limit.
+    Blur через scale-down+up (без boxblur). Выход 960x540 для экономии RAM.
     """
     out = path.with_stem(path.stem + "_blurbg").with_suffix(".mp4")
 
+    # Уменьшенное разрешение (960x540) чтобы не OOM на хостинге
     fc_blur = (
-        "[0:v]scale=48:-2,scale=1280:720:flags=bilinear[bg];"
-        "[0:v]scale=-2:720:force_original_aspect_ratio=decrease[fg];"
+        "[0:v]scale=32:-2,scale=960:540:flags=bilinear[bg];"
+        "[0:v]scale=-2:540:force_original_aspect_ratio=decrease[fg];"
         "[bg][fg]overlay=(W-w)/2:(H-h)/2"
     )
-    vf_pad = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black"
+    vf_pad = "scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2:black"
+
+    # OOM-safe: threads=2, ultrafast
+    _lo = ["-threads", "2", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28"]
 
     attempts = [
-        ["-filter_complex", fc_blur, "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac"],
-        ["-filter_complex", fc_blur, "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-an"],
-        ["-filter_complex", fc_blur],
-        ["-filter_complex", fc_blur, "-an"],
-        ["-vf", vf_pad, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac"],
-        ["-vf", vf_pad],
-        ["-vf", vf_pad, "-an"],
+        ["-filter_complex", fc_blur] + _lo + ["-c:a", "aac"],
+        ["-filter_complex", fc_blur] + _lo + ["-an"],
+        ["-filter_complex", fc_blur, "-threads", "2"],
+        ["-filter_complex", fc_blur, "-threads", "2", "-an"],
+        ["-vf", vf_pad] + _lo + ["-c:a", "aac"],
+        ["-vf", vf_pad, "-threads", "2"],
+        ["-vf", vf_pad, "-threads", "2", "-an"],
     ]
     for i, extra in enumerate(attempts, 1):
         out.unlink(missing_ok=True)
