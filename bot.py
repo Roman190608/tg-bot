@@ -1246,99 +1246,29 @@ def apply_trim(path: Path, start: str, end: str) -> Path:
 
 
 def apply_mirror(path: Path, direction: str) -> Path:
-    """Зеркалирование через базовые фильтры.
-    hflip/vflip — базовые, но на урезанных сборках могут отсутствовать.
-    Fallback: transpose (тоже базовый) или Pillow покадрово.
-    """
+    """Зеркалирование видео. Пробуем несколько подходов к кодекам."""
     if direction not in ("horizontal", "vertical"):
         return path
     out = path.with_stem(path.stem + "_mirror").with_suffix(".mp4")
     vf = "hflip" if direction == "horizontal" else "vflip"
 
-    # Попытка 1: hflip/vflip
-    cmd = ["ffmpeg", "-y", "-i", str(path), "-vf", vf,
-           "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
-    logger.warning("Mirror cmd1 (%s): %s", vf, " ".join(cmd))
-    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
-        logger.info("✅ Зеркало (%s)", direction)
-        return out
-
-    # Попытка 2: transpose (только вертикальное — transpose=2,transpose=0 ~ vflip)
-    out.unlink(missing_ok=True)
-    if direction == "vertical":
-        vf2 = "transpose=2,transpose=2"  # 180° rotation ~ vflip for square-ish
-    else:
-        # horizontal fallback: Pillow
-        logger.warning("Mirror: hflip недоступен, используем Pillow")
-        return _mirror_pillow(path, direction)
-
-    cmd2 = ["ffmpeg", "-y", "-i", str(path), "-vf", vf2,
-            "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", str(out)]
-    if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
-        return out
-
-    # Попытка 3: Pillow покадрово
-    out.unlink(missing_ok=True)
-    return _mirror_pillow(path, direction)
-
-
-def _mirror_pillow(path: Path, direction: str) -> Path:
-    """Зеркалирование через Pillow: извлекаем кадры → flip → собираем обратно."""
-    try:
-        from PIL import Image
-    except ImportError:
-        logger.error("❌ Pillow не установлен, зеркало невозможно")
-        return path
-
-    out = path.with_stem(path.stem + "_mirror").with_suffix(".mp4")
-    tmp_dir = Path(f"/tmp/mirror_{id(path)}")
-    tmp_dir.mkdir(exist_ok=True)
-
-    try:
-        # Извлекаем кадры
-        cmd_extract = ["ffmpeg", "-y", "-i", str(path),
-                       "-vf", "fps=30", str(tmp_dir / "frame_%05d.png")]
-        if not ffmpeg_run(cmd_extract):
-            # Пробуем без fps
-            cmd_extract = ["ffmpeg", "-y", "-i", str(path), str(tmp_dir / "frame_%05d.png")]
-            if not ffmpeg_run(cmd_extract):
-                logger.error("❌ Не удалось извлечь кадры")
-                return path
-
-        # Зеркалим каждый кадр
-        frames = sorted(tmp_dir.glob("frame_*.png"))
-        if not frames:
-            logger.error("❌ Кадры не найдены")
-            return path
-
-        for frame_path in frames:
-            img = Image.open(frame_path)
-            if direction == "horizontal":
-                img = img.transpose(Image.FLIP_LEFT_RIGHT)
-            else:
-                img = img.transpose(Image.FLIP_TOP_BOTTOM)
-            img.save(str(frame_path))
-
-        # Собираем обратно (видео + оригинальный звук)
-        cmd_build = [
-            "ffmpeg", "-y",
-            "-framerate", "30",
-            "-i", str(tmp_dir / "frame_%05d.png"),
-            "-i", str(path),
-            "-map", "0:v", "-map", "1:a?",
-            "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-shortest",
-            str(out),
-        ]
-        if ffmpeg_run(cmd_build) and out.exists() and out.stat().st_size > 0:
-            logger.info("✅ Зеркало через Pillow")
+    # Серия попыток с разными кодеками
+    attempts = [
+        ["-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac"],
+        ["-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "copy"],
+        ["-vf", vf, "-c:v", "libx264", "-preset", "fast", "-an"],
+        ["-vf", vf],  # ffmpeg выбирает кодеки сам
+        ["-vf", vf, "-an"],  # без аудио, кодек авто
+    ]
+    for i, extra in enumerate(attempts, 1):
+        out.unlink(missing_ok=True)
+        cmd = ["ffmpeg", "-y", "-i", str(path)] + extra + [str(out)]
+        logger.warning("Mirror attempt %d: %s", i, " ".join(cmd))
+        if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+            logger.info("Mirror OK attempt %d (%s)", i, direction)
             return out
-    except Exception as e:
-        logger.error("❌ Pillow mirror error: %s", e)
-    finally:
-        import shutil as _sh
-        _sh.rmtree(tmp_dir, ignore_errors=True)
 
+    logger.error("Mirror: all attempts failed")
     return path
 
 
@@ -1372,196 +1302,136 @@ def _get_video_dimensions(path: Path) -> tuple:
             return int(parts[0]), int(parts[1])
     except Exception as e:
         logger.error("ffprobe dimensions error: %s", e)
-    return 720, 1280  # default
+    return 720, 1280
 
 
 def apply_text_overlay(path: Path, text: str) -> Path:
-    """Наложение текста через Pillow PNG + ffmpeg overlay (базовый фильтр).
-    НЕ использует drawtext (отсутствует в урезанных сборках ffmpeg).
+    """Наложение текста через Pillow PNG + ffmpeg overlay.
+    Overlay — базовый фильтр, есть в ЛЮБОЙ сборке.
+    PNG создаётся в папке downloads (не /tmp).
     """
     out = path.with_stem(path.stem + "_text").with_suffix(".mp4")
-    overlay_png = Path(f"/tmp/text_overlay_{id(path)}.png")
+    overlay_png = path.parent / f"_overlay_{path.stem}.png"
 
     try:
         from PIL import Image, ImageDraw, ImageFont
     except ImportError:
-        logger.error("❌ Pillow не установлен, текст невозможен")
+        logger.error("Pillow not installed")
         return path
 
     try:
-        # Размеры видео
         w, h = _get_video_dimensions(path)
-        logger.warning("Text overlay: video %dx%d, text='%s'", w, h, text[:50])
+        logger.warning("Text overlay: %dx%d text='%s'", w, h, text[:50])
 
-        # Создаём прозрачный PNG с текстом
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
-        # Шрифт
-        font_size = max(20, min(h // 20, 48))
-        font = None
+        font_size = max(20, min(h // 18, 52))
+        pil_font = None
         font_path = _find_font()
         if font_path:
             try:
-                font = ImageFont.truetype(font_path, font_size)
+                pil_font = ImageFont.truetype(font_path, font_size)
             except Exception:
                 pass
-        if font is None:
+        if pil_font is None:
             try:
-                font = ImageFont.load_default(size=font_size)
+                pil_font = ImageFont.load_default(size=font_size)
             except TypeError:
-                font = ImageFont.load_default()
+                pil_font = ImageFont.load_default()
 
-        # Позиция текста (центр-низ)
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
+        bbox = draw.textbbox((0, 0), text, font=pil_font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         x = (w - tw) // 2
-        y = h - th - max(20, h // 25)
+        y = h - th - max(30, h // 20)
 
-        # Обводка (чёрная)
-        border = max(2, font_size // 12)
+        border = max(2, font_size // 10)
         for dx in range(-border, border + 1):
             for dy in range(-border, border + 1):
                 if dx * dx + dy * dy <= border * border:
-                    draw.text((x + dx, y + dy), text, font=font, fill=(0, 0, 0, 255))
-        # Белый текст сверху
-        draw.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+                    draw.text((x + dx, y + dy), text, font=pil_font, fill=(0, 0, 0, 255))
+        draw.text((x, y), text, font=pil_font, fill=(255, 255, 255, 255))
 
         img.save(str(overlay_png), "PNG")
-        logger.warning("Text overlay PNG created: %s (%dx%d)", overlay_png, w, h)
-
+        logger.warning("Text PNG created: %s (%d bytes)", overlay_png, overlay_png.stat().st_size)
     except Exception as e:
-        logger.error("❌ Pillow text creation failed: %s", e)
+        logger.error("Pillow text error: %s", e)
         overlay_png.unlink(missing_ok=True)
         return path
 
-    # ffmpeg overlay — базовый фильтр, работает в любой сборке
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", str(path),
-        "-i", str(overlay_png),
-        "-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1",
-        "-c:v", "libx264", "-preset", "fast",
-        "-c:a", "aac",
-        str(out),
+    attempts = [
+        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1",
+         "-c:v", "libx264", "-preset", "fast", "-c:a", "aac"],
+        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1",
+         "-c:v", "libx264", "-preset", "fast", "-c:a", "copy"],
+        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1"],
+        ["-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1", "-an"],
     ]
-    logger.warning("Text overlay cmd (PIL+overlay): %s", " ".join(cmd))
-    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
-        overlay_png.unlink(missing_ok=True)
-        logger.info("✅ Текст наложен через Pillow+overlay")
-        return out
-
-    # Fallback: без аудио
-    out.unlink(missing_ok=True)
-    cmd2 = [
-        "ffmpeg", "-y",
-        "-i", str(path),
-        "-i", str(overlay_png),
-        "-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1",
-        "-c:v", "libx264", "-preset", "fast", "-an",
-        str(out),
-    ]
-    logger.warning("Text overlay cmd2 (no audio): %s", " ".join(cmd2))
-    if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
-        overlay_png.unlink(missing_ok=True)
-        logger.info("✅ Текст наложен (без аудио)")
-        return out
+    for i, extra in enumerate(attempts, 1):
+        out.unlink(missing_ok=True)
+        cmd = ["ffmpeg", "-y", "-i", str(path), "-i", str(overlay_png)] + extra + [str(out)]
+        logger.warning("Text attempt %d: %s", i, " ".join(cmd))
+        if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+            overlay_png.unlink(missing_ok=True)
+            logger.info("Text overlay OK attempt %d", i)
+            return out
 
     overlay_png.unlink(missing_ok=True)
-    logger.error("❌ Наложение текста не удалось")
+    logger.error("Text overlay: all attempts failed")
     return path
 
 
 def apply_music_overlay(video_path: Path, music_path: Path) -> Path:
     """Замена аудио в видео на пользовательскую музыку."""
     out = video_path.with_stem(video_path.stem + "_music").with_suffix(".mp4")
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", str(video_path),
-        "-i", str(music_path),
-        "-map", "0:v:0", "-map", "1:a:0",
-        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-        "-shortest",
-        str(out),
+    attempts = [
+        ["-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest"],
+        ["-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", "-b:a", "192k", "-shortest"],
+        ["-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "copy", "-shortest"],
+        ["-map", "0:v:0", "-map", "1:a:0", "-shortest"],
     ]
-    logger.warning("Music overlay cmd: %s", " ".join(cmd))
-    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
-        logger.info("✅ Музыка наложена")
-        return out
-    # Fallback: re-encode video too
-    out.unlink(missing_ok=True)
-    cmd2 = [
-        "ffmpeg", "-y",
-        "-i", str(video_path),
-        "-i", str(music_path),
-        "-map", "0:v:0", "-map", "1:a:0",
-        "-c:v", "libx264", "-preset", "fast",
-        "-c:a", "aac", "-b:a", "192k",
-        "-shortest",
-        str(out),
-    ]
-    if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
-        return out
-    logger.error("❌ Наложение музыки не удалось")
+    for i, extra in enumerate(attempts, 1):
+        out.unlink(missing_ok=True)
+        cmd = ["ffmpeg", "-y", "-i", str(video_path), "-i", str(music_path)] + extra + [str(out)]
+        logger.warning("Music attempt %d: %s", i, " ".join(cmd))
+        if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+            logger.info("Music overlay OK attempt %d", i)
+            return out
+    logger.error("Music overlay: all attempts failed")
     return video_path
 
 
 def apply_blur_bg(path: Path) -> Path:
-    """Размытый фон 16:9 для вертикального видео.
-    НЕ использует boxblur/gblur — вместо этого scale-down + scale-up (пиксельный блюр).
+    """Размытый фон 16:9. Blur через scale-down+up (без boxblur).
     Работает в ЛЮБОЙ сборке ffmpeg.
     """
     out = path.with_stem(path.stem + "_blurbg").with_suffix(".mp4")
 
-    # Эффект «размытия» через scale: уменьшаем до 32px → растягиваем до 1280x720
-    # Используем bilinear интерполяцию — создаёт мягкий blur-эффект
-    fc = (
+    fc_blur = (
         "[0:v]scale=48:-2,scale=1280:720:flags=bilinear[bg];"
         "[0:v]scale=-2:720:force_original_aspect_ratio=decrease[fg];"
         "[bg][fg]overlay=(W-w)/2:(H-h)/2"
     )
-    cmd = [
-        "ffmpeg", "-y", "-i", str(path),
-        "-filter_complex", fc,
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-        "-c:a", "aac",
-        str(out),
-    ]
-    logger.warning("Blur BG cmd1 (scale blur): %s", " ".join(cmd))
-    if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
-        logger.info("✅ Размытый фон (scale blur)")
-        return out
+    vf_pad = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black"
 
-    # Попытка 2: без аудио
-    out.unlink(missing_ok=True)
-    cmd2 = [
-        "ffmpeg", "-y", "-i", str(path),
-        "-filter_complex", fc,
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-        "-an",
-        str(out),
+    attempts = [
+        ["-filter_complex", fc_blur, "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac"],
+        ["-filter_complex", fc_blur, "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-an"],
+        ["-filter_complex", fc_blur],
+        ["-filter_complex", fc_blur, "-an"],
+        ["-vf", vf_pad, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac"],
+        ["-vf", vf_pad],
+        ["-vf", vf_pad, "-an"],
     ]
-    logger.warning("Blur BG cmd2 (no audio): %s", " ".join(cmd2))
-    if ffmpeg_run(cmd2) and out.exists() and out.stat().st_size > 0:
-        logger.info("✅ Размытый фон (без аудио)")
-        return out
+    for i, extra in enumerate(attempts, 1):
+        out.unlink(missing_ok=True)
+        cmd = ["ffmpeg", "-y", "-i", str(path)] + extra + [str(out)]
+        logger.warning("BlurBG attempt %d: %s", i, " ".join(cmd))
+        if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+            logger.info("BlurBG OK attempt %d", i)
+            return out
 
-    # Попытка 3: простой чёрный pad (без filter_complex)
-    out.unlink(missing_ok=True)
-    cmd3 = [
-        "ffmpeg", "-y", "-i", str(path),
-        "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black",
-        "-c:v", "libx264", "-preset", "fast",
-        "-c:a", "aac",
-        str(out),
-    ]
-    logger.warning("Blur BG cmd3 (black pad): %s", " ".join(cmd3))
-    if ffmpeg_run(cmd3) and out.exists() and out.stat().st_size > 0:
-        logger.info("✅ Чёрный фон 16:9 (fallback)")
-        return out
-
-    logger.error("❌ Фон 16:9 не удался")
+    logger.error("BlurBG: all attempts failed")
     return path
 
 
