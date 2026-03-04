@@ -536,6 +536,7 @@ TEXTS = {
         "music_set": "✅ Музыка загружена! 🎶",
         "music_cleared": "❌ Музыка убрана.",
         "fmt_cut": "✂️ Нарезка",
+        "fmt_quick": "⚡ Скачать",
         "subs_on": "📝 Субтитры ✅",
         "subs_off": "📝 Субтитры ❌",
         "speed_btn": "⚡ {speed}x",
@@ -706,6 +707,7 @@ TEXTS = {
         "music_set": "✅ Music uploaded! 🎶",
         "music_cleared": "❌ Music removed.",
         "fmt_cut": "✂️ Cut",
+        "fmt_quick": "⚡ Download",
         "subs_on": "📝 Subs ✅",
         "subs_off": "📝 Subs ❌",
         "speed_btn": "⚡ {speed}x",
@@ -1223,38 +1225,99 @@ def apply_audio(path: Path, volume: float) -> Path:
     return out if ffmpeg_run(cmd) and out.exists() else path
 
 
+def _get_video_codec(path: Path) -> str:
+    """Определяет видеокодек файла через ffprobe."""
+    try:
+        cmd = [_ffprobe_cmd(), "-v", "error", "-select_streams", "v:0",
+               "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(path)]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        return r.stdout.strip().lower()
+    except Exception:
+        return "unknown"
+
+
+def _preprocess_for_effects(path: Path) -> Path:
+    """Пре-конвертация тяжёлых видео (HEVC, VP9, AV1, >720p) в лёгкий mpeg4 480p.
+    HEVC декодер сам по себе жрёт ~200МБ RAM — на дешёвых хостингах это OOM kill.
+    Конвертируем в mpeg4 480p (~30МБ RAM для decode+encode).
+    """
+    codec = _get_video_codec(path)
+    w, h = _get_video_dimensions(path)
+    heavy_codecs = {"hevc", "h265", "vp9", "av1"}
+    needs_preprocess = codec in heavy_codecs or max(w, h) > 960
+
+    if not needs_preprocess:
+        logger.warning("Preprocess: skip (codec=%s, %dx%d)", codec, w, h)
+        return path
+
+    logger.warning("Preprocess: %s %dx%d → mpeg4 480p", codec, w, h)
+    out = path.with_stem(path.stem + "_pre").with_suffix(".mp4")
+
+    # Масштабируем до 480p (сохраняя пропорции)
+    if h > w:
+        # Вертикальное видео
+        scale = "scale=-2:480"
+    else:
+        scale = "scale=480:-2"
+
+    attempts = [
+        # mpeg4 — самый лёгкий кодек для encode
+        ["-vf", scale, "-threads", "1", "-c:v", "mpeg4", "-q:v", "4", "-c:a", "aac", "-b:a", "128k"],
+        ["-vf", scale, "-threads", "1", "-c:v", "mpeg4", "-q:v", "4", "-an"],
+        # libx264 ultrafast
+        ["-vf", scale, "-threads", "1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-c:a", "aac"],
+        ["-vf", scale, "-threads", "1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-an"],
+    ]
+    for i, extra in enumerate(attempts, 1):
+        out.unlink(missing_ok=True)
+        cmd = ["ffmpeg", "-y", "-i", str(path)] + extra + [str(out)]
+        logger.warning("Preprocess attempt %d: %s", i, " ".join(cmd))
+        if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
+            logger.info("Preprocess OK attempt %d → %s (%d KB)", i, out.name, out.stat().st_size // 1024)
+            return out
+
+    logger.error("Preprocess: all attempts failed, using original")
+    return path
+
+
 def _oom_safe_encode(input_path: Path, out_path: Path, vf_args: list, use_filter_complex: bool = False) -> bool:
-    """Универсальный OOM-safe энкодер. Пробует разные кодеки от лёгких к тяжёлым.
-    Возвращает True если успешно создал out_path.
-    vf_args — аргументы фильтра, например ["-vf", "hflip"] или ["-filter_complex", "..."]
+    """Универсальный OOM-safe энкодер.
+    КЛЮЧЕВОЕ: -threads 1 ДО -i чтобы ограничить декодер (HEVC жрёт RAM).
+    Все -vf фильтры получают scale=-2:360 в начало цепочки (360p = минимум RAM).
     """
     out_path.unlink(missing_ok=True)
 
-    # Стратегии кодирования — от самых лёгких к тяжёлым по RAM
+    # Добавляем scale вниз к -vf фильтрам (не к -filter_complex — там своё)
+    patched_vf = list(vf_args)
+    if len(patched_vf) >= 2 and patched_vf[0] == "-vf":
+        # Добавляем scale=-2:360 перед фильтром
+        patched_vf[1] = f"scale=-2:360," + patched_vf[1]
+
     strategies = [
-        # 1. mpeg4 — самый лёгкий кодек, ~50МБ RAM
-        ["-threads", "1", "-c:v", "mpeg4", "-q:v", "5", "-c:a", "aac", "-b:a", "128k"],
+        # 1. mpeg4 — самый лёгкий кодек
+        ["-c:v", "mpeg4", "-q:v", "5", "-c:a", "aac", "-b:a", "128k"],
         # 2. mpeg4 без аудио
-        ["-threads", "1", "-c:v", "mpeg4", "-q:v", "5", "-an"],
-        # 3. libx264 ultrafast threads=1 — ~150МБ RAM
-        ["-threads", "1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-c:a", "aac"],
+        ["-c:v", "mpeg4", "-q:v", "5", "-an"],
+        # 3. libx264 ultrafast
+        ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-c:a", "aac"],
         # 4. libx264 без аудио
-        ["-threads", "1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-an"],
-        # 5. Авто кодеки (ffmpeg выберет сам)
-        ["-threads", "1"],
+        ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-an"],
+        # 5. Авто кодеки
+        [],
         # 6. Авто без аудио
-        ["-threads", "1", "-an"],
+        ["-an"],
     ]
 
     for i, codec_args in enumerate(strategies, 1):
         out_path.unlink(missing_ok=True)
-        cmd = ["ffmpeg", "-y", "-i", str(input_path)] + vf_args + codec_args + [str(out_path)]
+        # -threads 1 ДО -i = ограничивает ДЕКОДЕР (критично для HEVC!)
+        cmd = ["ffmpeg", "-y", "-threads", "1", "-i", str(input_path)] + patched_vf + ["-threads", "1"] + codec_args + [str(out_path)]
         logger.warning("OOM-safe attempt %d: %s", i, " ".join(cmd))
         if ffmpeg_run(cmd) and out_path.exists() and out_path.stat().st_size > 0:
             logger.info("OOM-safe OK attempt %d", i)
             return True
 
-    logger.error("OOM-safe: all 6 strategies failed for %s", out_path.name)
+    logger.error("OOM-safe: all strategies failed for %s", out_path.name)
     return False
 
 
@@ -1326,7 +1389,7 @@ def _get_video_dimensions(path: Path) -> tuple:
 
 def apply_text_overlay(path: Path, text: str) -> Path:
     """Наложение текста через Pillow PNG + ffmpeg overlay.
-    OOM-safe: mpeg4 кодек первым (самый лёгкий).
+    OOM-safe: 360p PNG, mpeg4, -threads 1 ДО -i.
     """
     out = path.with_stem(path.stem + "_text").with_suffix(".mp4")
     overlay_png = path.parent / f"_overlay_{path.stem}.png"
@@ -1339,12 +1402,23 @@ def apply_text_overlay(path: Path, text: str) -> Path:
 
     try:
         w, h = _get_video_dimensions(path)
-        logger.warning("Text overlay: %dx%d text='%s'", w, h, text[:50])
+        # Создаём PNG на 360p — чтобы overlay не жрал RAM
+        if h > w:
+            h360 = 360
+            w360 = int(w * 360 / h) if h > 0 else 202
+        else:
+            w360 = 360
+            h360 = int(h * 360 / w) if w > 0 else 640
+        # Чётные размеры
+        w360 = w360 + (w360 % 2)
+        h360 = h360 + (h360 % 2)
 
-        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        logger.warning("Text overlay: orig %dx%d -> 360p %dx%d, text='%s'", w, h, w360, h360, text[:50])
+
+        img = Image.new("RGBA", (w360, h360), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
 
-        font_size = max(20, min(h // 18, 52))
+        font_size = max(16, min(h360 // 16, 36))
         pil_font = None
         font_path = _find_font()
         if font_path:
@@ -1360,8 +1434,8 @@ def apply_text_overlay(path: Path, text: str) -> Path:
 
         bbox = draw.textbbox((0, 0), text, font=pil_font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        x = (w - tw) // 2
-        y = h - th - max(30, h // 20)
+        x = (w360 - tw) // 2
+        y = h360 - th - max(15, h360 // 20)
 
         border = max(2, font_size // 10)
         for dx in range(-border, border + 1):
@@ -1371,25 +1445,27 @@ def apply_text_overlay(path: Path, text: str) -> Path:
         draw.text((x, y), text, font=pil_font, fill=(255, 255, 255, 255))
 
         img.save(str(overlay_png), "PNG")
-        logger.warning("Text PNG: %s (%d bytes)", overlay_png, overlay_png.stat().st_size)
+        logger.warning("Text PNG: %s (%d bytes, %dx%d)", overlay_png, overlay_png.stat().st_size, w360, h360)
     except Exception as e:
         logger.error("Pillow text error: %s", e)
         overlay_png.unlink(missing_ok=True)
         return path
 
-    fc = "[0:v][1:v]overlay=0:0:shortest=1"
+    # filter_complex: scale видео до 360p, потом overlay с PNG
+    fc = f"[0:v]scale={w360}:{h360}[v];[v][1:v]overlay=0:0:shortest=1"
+
     strategies = [
-        ["-threads", "1", "-c:v", "mpeg4", "-q:v", "5", "-c:a", "aac", "-b:a", "128k"],
-        ["-threads", "1", "-c:v", "mpeg4", "-q:v", "5", "-an"],
-        ["-threads", "1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-c:a", "aac"],
-        ["-threads", "1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-an"],
-        ["-threads", "1"],
-        ["-threads", "1", "-an"],
+        ["-c:v", "mpeg4", "-q:v", "5", "-c:a", "aac", "-b:a", "128k"],
+        ["-c:v", "mpeg4", "-q:v", "5", "-an"],
+        ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-an"],
+        ["-an"],
     ]
     for i, codec_args in enumerate(strategies, 1):
         out.unlink(missing_ok=True)
-        cmd = ["ffmpeg", "-y", "-i", str(path), "-i", str(overlay_png),
-               "-filter_complex", fc] + codec_args + [str(out)]
+        # -threads 1 ДО -i = ограничивает декодер HEVC
+        cmd = ["ffmpeg", "-y", "-threads", "1",
+               "-i", str(path), "-i", str(overlay_png),
+               "-filter_complex", fc, "-threads", "1"] + codec_args + [str(out)]
         logger.warning("Text attempt %d: %s", i, " ".join(cmd))
         if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
             overlay_png.unlink(missing_ok=True)
@@ -1415,7 +1491,7 @@ def apply_music_overlay(video_path: Path, music_path: Path) -> Path:
     ]
     for i, extra in enumerate(attempts, 1):
         out.unlink(missing_ok=True)
-        cmd = ["ffmpeg", "-y", "-i", str(video_path), "-i", str(music_path)] + extra + [str(out)]
+        cmd = ["ffmpeg", "-y", "-threads", "1", "-i", str(video_path), "-i", str(music_path)] + extra + [str(out)]
         logger.warning("Music attempt %d: %s", i, " ".join(cmd))
         if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
             logger.info("Music overlay OK attempt %d", i)
@@ -1425,34 +1501,26 @@ def apply_music_overlay(video_path: Path, music_path: Path) -> Path:
 
 
 def apply_blur_bg(path: Path) -> Path:
-    """Размытый фон 16:9. OOM-safe: mpeg4 кодек, threads=1, разрешение 960x540."""
+    """Размытый фон 16:9. OOM-safe: -threads 1 ДО -i, 640x360."""
     out = path.with_stem(path.stem + "_blurbg").with_suffix(".mp4")
 
-    # Уменьшенное разрешение 960x540 — экономия RAM
     fc_blur = (
-        "[0:v]scale=32:-2,scale=960:540:flags=bilinear[bg];"
-        "[0:v]scale=-2:540:force_original_aspect_ratio=decrease[fg];"
+        "[0:v]scale=24:-2,scale=640:360:flags=bilinear[bg];"
+        "[0:v]scale=-2:360:force_original_aspect_ratio=decrease[fg];"
         "[bg][fg]overlay=(W-w)/2:(H-h)/2"
     )
-    vf_pad = "scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2:black"
+    vf_pad = "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:black"
 
     strategies = [
-        # Blur с mpeg4 (самый лёгкий)
-        ["-filter_complex", fc_blur, "-threads", "1", "-c:v", "mpeg4", "-q:v", "5", "-c:a", "aac", "-b:a", "128k"],
-        ["-filter_complex", fc_blur, "-threads", "1", "-c:v", "mpeg4", "-q:v", "5", "-an"],
-        # Blur с libx264
-        ["-filter_complex", fc_blur, "-threads", "1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-c:a", "aac"],
-        ["-filter_complex", fc_blur, "-threads", "1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-an"],
-        # Чёрный pad (проще, меньше RAM) с mpeg4
-        ["-vf", vf_pad, "-threads", "1", "-c:v", "mpeg4", "-q:v", "5", "-c:a", "aac", "-b:a", "128k"],
-        ["-vf", vf_pad, "-threads", "1", "-c:v", "mpeg4", "-q:v", "5", "-an"],
-        # Чёрный pad авто
-        ["-vf", vf_pad, "-threads", "1"],
-        ["-vf", vf_pad, "-threads", "1", "-an"],
+        ["-filter_complex", fc_blur, "-c:v", "mpeg4", "-q:v", "5", "-c:a", "aac", "-b:a", "128k"],
+        ["-filter_complex", fc_blur, "-c:v", "mpeg4", "-q:v", "5", "-an"],
+        ["-vf", vf_pad, "-c:v", "mpeg4", "-q:v", "5", "-c:a", "aac", "-b:a", "128k"],
+        ["-vf", vf_pad, "-c:v", "mpeg4", "-q:v", "5", "-an"],
+        ["-vf", vf_pad, "-an"],
     ]
     for i, extra in enumerate(strategies, 1):
         out.unlink(missing_ok=True)
-        cmd = ["ffmpeg", "-y", "-i", str(path)] + extra + [str(out)]
+        cmd = ["ffmpeg", "-y", "-threads", "1", "-i", str(path)] + extra + ["-threads", "1", str(out)]
         logger.warning("BlurBG attempt %d: %s", i, " ".join(cmd))
         if ffmpeg_run(cmd) and out.exists() and out.stat().st_size > 0:
             logger.info("BlurBG OK attempt %d", i)
@@ -1704,6 +1772,7 @@ def format_keyboard(lang="ru", default_fmt="", url="") -> InlineKeyboardMarkup:
         mark = " ✅" if cb == f"fmt_{default_fmt}" else ""
         return InlineKeyboardButton(T[key] + mark, callback_data=cb)
     rows = [
+        [InlineKeyboardButton(T["fmt_quick"], callback_data="fmt_quick")],
         [btn("fmt_video", "fmt_video"), btn("fmt_audio", "fmt_audio")],
         [btn("fmt_gif", "fmt_gif"), btn("fmt_circle", "fmt_circle")],
         [btn("fmt_thumb", "fmt_thumb"), btn("fmt_playlist", "fmt_playlist")],
@@ -3268,6 +3337,25 @@ async def cb_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     platform = context.user_data.get("platform", "Видео")
     lang = get_lang(context)
 
+    if fmt == "quick":
+        # Быстрая скачка — используем настройки по умолчанию
+        def_fmt = context.user_data.get("default_format", "video")
+        def_q = context.user_data.get("default_quality", "best")
+        context.user_data["format"] = def_fmt
+        context.user_data["quality"] = def_q
+        context.user_data["audio"] = "normal"
+        context.user_data["orientation"] = "original"
+        if def_fmt == "audio":
+            context.user_data["audio_format"] = "mp3"
+        elif def_fmt == "gif":
+            context.user_data.update({"quality": "480", "audio": "mute"})
+        elif def_fmt == "circle":
+            context.user_data.update({"quality": "480"})
+        elif def_fmt == "shakal":
+            context.user_data.update({"quality": "360"})
+        await show_preview_or_download(query, context)
+        return
+
     if fmt in ("audio", "wav", "flac"):
         # FIX: правильная обработка WAV/FLAC
         context.user_data["quality"] = "best"
@@ -4045,6 +4133,16 @@ async def _do_download(user, status_msg, context):
         # Ориентация
         logger.warning("Pipeline: orient=%s, mirror=%s, text=%s, music=%s, fmt=%s",
                        orient, mirror, bool(overlay_text), bool(overlay_music), fmt)
+
+        # Пре-конвертация тяжёлых видео (HEVC/VP9/>720p) перед эффектами
+        has_effects = (orient != "original" or mirror != "none" or overlay_text or overlay_music)
+        if has_effects and fmt == "video" and ffmpeg_ok():
+            await status_msg.edit_text("🔄 Подготовка...")
+            preprocessed = await asyncio.get_event_loop().run_in_executor(None, _preprocess_for_effects, current)
+            if preprocessed != current:
+                files_to_clean.append(preprocessed)
+                current = preprocessed
+
         if fmt == "video" and orient != "original":
             await status_msg.edit_text(f"📐 {orient}...")
             current = await asyncio.get_event_loop().run_in_executor(None, apply_orientation, current, orient)
