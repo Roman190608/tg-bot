@@ -27,6 +27,7 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, filters, ContextTypes,
 )
+from telegram.request import HTTPXRequest
 import yt_dlp
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -201,7 +202,11 @@ _test_ffmpeg()
 
 def _test_filters():
     """Проверяет доступные фильтры ffmpeg при запуске."""
-    ff = _ffmpeg_cmd()
+    ff = os.environ.get("FFMPEG_LOCATION", "")
+    if ff:
+        ff = os.path.join(ff, "ffmpeg")
+    else:
+        ff = shutil.which("ffmpeg") or "ffmpeg"
     logger.warning("🔍 Тест фильтров ffmpeg (%s):", ff)
     test_in = Path("/tmp/_fftest_in.mp4")
     test_out = Path("/tmp/_fftest_out.mp4")
@@ -2723,6 +2728,26 @@ async def safe_edit(query, text, reply_markup=None, parse_mode=None):
             continue
 
 
+async def _retry_send(coro_fn, retries=3, delay=2):
+    """Retry-обёртка для отправки файлов/сообщений в Telegram.
+    httpx.ReadError / TimeoutError — частые на дешёвых хостингах.
+    """
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            return await coro_fn()
+        except Exception as e:
+            last_err = e
+            err_name = type(e).__name__
+            if any(x in err_name for x in ("ReadError", "WriteError", "Timeout", "Network", "Connection")):
+                logger.warning("Send retry %d/%d: %s", attempt, retries, err_name)
+                if attempt < retries:
+                    await asyncio.sleep(delay * attempt)
+                continue
+            raise  # Не сетевая ошибка — не ретраим
+    raise last_err
+
+
 def get_user_theme(context) -> str:
     return context.user_data.get("theme", "light")
 
@@ -3982,8 +4007,10 @@ async def _do_download(user, status_msg, context):
                 await status_msg.edit_text("❌ Не удалось.")
                 return
             await status_msg.edit_text("📤 Отправляю...")
-            with open(zp, "rb") as f:
-                await status_msg.reply_document(document=f, caption=f"✅ Плейлист • {ql}")
+            async def _send_playlist():
+                with open(zp, "rb") as f:
+                    await status_msg.reply_document(document=f, caption=f"✅ Плейлист • {ql}")
+            await _retry_send(_send_playlist)
             await status_msg.delete()
             zp.unlink(missing_ok=True)
             update_stats(user.id, platform)
@@ -4035,8 +4062,10 @@ async def _do_download(user, status_msg, context):
                 caption += f" • {trim_s}–{trim_e}"
             again_label = "🔄 Ещё раз" if lang == "ru" else "🔄 Again"
             again_kb = InlineKeyboardMarkup([[InlineKeyboardButton(again_label, callback_data="download_again")]])
-            with open(current, "rb") as f:
-                await status_msg.reply_video(video=f, caption=caption, reply_markup=again_kb)
+            async def _send_cut():
+                with open(current, "rb") as f:
+                    await status_msg.reply_video(video=f, caption=caption, reply_markup=again_kb)
+            await _retry_send(_send_cut)
             await status_msg.delete()
             update_stats(user.id, platform)
             increment_limit(user.id)
@@ -4277,19 +4306,21 @@ async def _do_download(user, status_msg, context):
         again_label = "🔄 Ещё раз" if lang == "ru" else "🔄 Again"
         again_kb = InlineKeyboardMarkup([[InlineKeyboardButton(again_label, callback_data="download_again")]])
 
-        with open(current, "rb") as f:
-            if fmt == "audio":
-                await status_msg.reply_audio(audio=f, caption=caption, reply_markup=again_kb)
-            elif fmt == "gif":
-                await status_msg.reply_animation(animation=f, caption=caption, reply_markup=again_kb)
-            elif fmt == "circle":
-                await status_msg.reply_video_note(video_note=f)
-            elif fmt == "shakal":
-                await status_msg.reply_video(video=f, caption=caption,
-                                             supports_streaming=True, reply_markup=again_kb)
-            else:
-                await status_msg.reply_video(video=f, caption=caption,
-                                             supports_streaming=True, reply_markup=again_kb)
+        async def _send_result():
+            with open(current, "rb") as f:
+                if fmt == "audio":
+                    await status_msg.reply_audio(audio=f, caption=caption, reply_markup=again_kb)
+                elif fmt == "gif":
+                    await status_msg.reply_animation(animation=f, caption=caption, reply_markup=again_kb)
+                elif fmt == "circle":
+                    await status_msg.reply_video_note(video_note=f)
+                elif fmt == "shakal":
+                    await status_msg.reply_video(video=f, caption=caption,
+                                                 supports_streaming=True, reply_markup=again_kb)
+                else:
+                    await status_msg.reply_video(video=f, caption=caption,
+                                                 supports_streaming=True, reply_markup=again_kb)
+        await _retry_send(_send_result)
 
         await status_msg.delete()
         update_stats(user.id, platform)
@@ -4433,12 +4464,22 @@ async def task_cleanup_downloads(context=None):
 async def error_handler(update, context):
     import time as time_mod
     err = context.error
-    if "Conflict" in str(err):
+    err_str = str(err)
+
+    # Сетевые ошибки — просто логируем, polling переподключится сам
+    network_errors = ("ReadError", "WriteError", "ConnectError", "RemoteProtocolError",
+                      "ReadTimeout", "WriteTimeout", "ConnectTimeout", "PoolTimeout",
+                      "NetworkError", "TimedOut", "ConnectionResetError", "ConnectionError")
+    if any(ne in type(err).__name__ or ne in err_str for ne in network_errors):
+        logger.warning("Сетевая ошибка (авто-reconnect): %s", type(err).__name__)
+        return
+
+    if "Conflict" in err_str:
         logger.warning("Конфликт polling — второй экземпляр?")
         await asyncio.sleep(10)
         return
+
     logger.error("Ошибка: %s", err)
-    # FIX: корректный счётчик ошибок
     _error_state["count"] += 1
     now = time_mod.time()
     if _error_state["count"] >= 5 and now - _error_state["last_alert"] > 300:
@@ -4448,7 +4489,7 @@ async def error_handler(update, context):
         try:
             await context.bot.send_message(
                 ADMIN_ID,
-                f"⚠️ {count} ошибок за 5 мин!\nПоследняя: {str(err)[:200]}",
+                f"⚠️ {count} ошибок за 5 мин!\nПоследняя: {err_str[:200]}",
             )
         except Exception:
             pass
@@ -4463,7 +4504,22 @@ def main():
 
     Storage.init()
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    # Увеличенные таймауты для стабильности на дешёвых хостингах
+    request = HTTPXRequest(
+        connect_timeout=20.0,
+        read_timeout=30.0,
+        write_timeout=30.0,
+        pool_timeout=10.0,
+        connection_pool_size=8,
+    )
+    app = Application.builder().token(BOT_TOKEN).request(request).get_updates_request(
+        HTTPXRequest(
+            connect_timeout=20.0,
+            read_timeout=60.0,   # polling long-poll = 60s
+            write_timeout=30.0,
+            pool_timeout=10.0,
+        )
+    ).build()
     app_ref = app
 
     # Команды
@@ -4558,7 +4614,16 @@ def main():
     app.post_init = _post_init
 
     logger.info("🚀 Бот v%s запущен (polling)...", BOT_VERSION)
-    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    app.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+        poll_interval=1.0,        # пауза между запросами
+        timeout=30,               # long-poll таймаут
+        connect_timeout=20.0,
+        read_timeout=30.0,
+        write_timeout=30.0,
+        pool_timeout=10.0,
+    )
 
 
 if __name__ == "__main__":
